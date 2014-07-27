@@ -180,8 +180,7 @@ LOCAL_CFLAGS += -DUSE_SAMSUNG_COLORFORMAT
 
 # Include native color format header path
 LOCAL_C_INCLUDES += \
-	$(TOP)/hardware/samsung/exynos4/hal/include \
-	$(TOP)/hardware/samsung/exynos4/include
+        $(TOP)/$(TARGET_HAL_PATH)/include
 
 endif
 
