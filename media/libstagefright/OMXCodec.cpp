@@ -131,18 +131,6 @@ static const int OMX_SEC_COLOR_FormatNV12TPhysicalAddress = 0x7F000001;
 static const int OMX_SEC_COLOR_FormatNV12LPhysicalAddress = 0x7F000002;
 static const int OMX_SEC_COLOR_FormatNV12LVirtualAddress = 0x7F000003;
 static const int OMX_SEC_COLOR_FormatNV12Tiled = 0x7FC00002;
-static int calc_plane(int width, int height)
-{
-    int mbX, mbY;
-
-    mbX = (width + 15)/16;
-    mbY = (height + 15)/16;
-
-    /* Alignment for interlaced processing */
-    mbY = (mbY + 1) / 2 * 2;
-
-    return (mbX * 16) * (mbY * 16);
-}
 #endif // USE_SAMSUNG_COLORFORMAT
 
 // Treat time out as an error if we have not received any output
@@ -1688,7 +1676,6 @@ status_t OMXCodec::setVideoOutputFormat(
                 format.eColorFormat = (OMX_COLOR_FORMATTYPE)OMX_SEC_COLOR_FormatNV12Tiled;
         }
 #endif
-
 #endif
 
         int32_t colorFormat;
@@ -1710,6 +1697,15 @@ status_t OMXCodec::setVideoOutputFormat(
                 return ERROR_UNSUPPORTED;
             }
         }
+
+#ifdef USE_SAMSUNG_COLORFORMAT
+        if (!strncmp("OMX.SEC.", mComponentName, 8)) {
+            if (mNativeWindow == NULL)
+                format.eColorFormat = OMX_COLOR_FormatYUV420Planar;
+            else
+                format.eColorFormat = OMX_COLOR_FormatYUV420SemiPlanar;
+        }
+#endif
 
         err = mOMX->setParameter(
                 mNode, OMX_IndexParamVideoPortFormat,
@@ -2262,10 +2258,14 @@ status_t OMXCodec::allocateOutputBuffersFromNativeWindow() {
     setNativeWindowColorFormat(eNativeColorFormat);
 
     err = native_window_set_buffers_geometry(
-    mNativeWindow.get(),
-    def.format.video.nFrameWidth,
-    def.format.video.nFrameHeight,
-    eNativeColorFormat);
+            mNativeWindow.get(),
+            def.format.video.nFrameWidth,
+            def.format.video.nFrameHeight,
+            eNativeColorFormat);
+
+    if (mNativeWindow != NULL) {
+        initNativeWindowCrop();
+    }
 #endif
 
     if (err != 0) {
