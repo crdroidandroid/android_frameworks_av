@@ -219,7 +219,7 @@ void SoftwareRenderer::render(
         CHECK_EQ(0, mapper.lock(
             buf->handle, GRALLOC_USAGE_SW_WRITE_OFTEN | GRALLOC_USAGE_YUV_ADDR, bounds, pYUVBuf));
 
-        size_t dst_c_stride = buf->stride / 2;
+        size_t dst_c_stride = ALIGN(buf->stride / 2, 16);
         uint8_t *dst_y = (uint8_t *)pYUVBuf[0];
         uint8_t *dst_v = (uint8_t *)pYUVBuf[1];
         uint8_t *dst_u = (uint8_t *)pYUVBuf[2];
