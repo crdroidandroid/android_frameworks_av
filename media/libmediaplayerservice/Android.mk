@@ -60,6 +60,8 @@ endif
 
 LOCAL_MODULE:= libmediaplayerservice
 
+LOCAL_CFLAGS += -Os
+
 ifeq ($(TARGET_ENABLE_QC_AV_ENHANCEMENTS),true)
     LOCAL_CFLAGS += -DENABLE_AV_ENHANCEMENTS
     LOCAL_C_INCLUDES += $(TOP)/frameworks/av/include/media
