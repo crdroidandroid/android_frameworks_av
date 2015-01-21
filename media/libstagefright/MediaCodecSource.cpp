@@ -437,6 +437,7 @@ status_t MediaCodecSource::initEncoder() {
     }
 
     AString outputMIME;
+    AString componentName;
     CHECK(mOutputFormat->findString("mime", &outputMIME));
 
     int width, height;
@@ -450,8 +451,30 @@ status_t MediaCodecSource::initEncoder() {
     {
         ExtendedStats::AutoProfile autoProfile(
                 STATS_PROFILE_ALLOCATE_NODE(mIsVideo), mRecorderExtendedStats);
+
+#ifdef ENABLE_AV_ENHANCEMENTS
+        Vector<OMXCodec::CodecNameAndQuirks> matchingCodecs;
+        if (mIsVideo && (mFlags & OMXCodec::kHardwareCodecsOnly)) {
+
+            OMXCodec::findMatchingCodecs(
+                    outputMIME.c_str(),
+                    true, // createEncoder
+                    NULL,  // matchComponentName
+                    OMXCodec::kHardwareCodecsOnly,     // flags
+                    &matchingCodecs);
+        }
+        if (matchingCodecs.size() > 0) {
+            componentName = matchingCodecs.itemAt(0).mName.string();
+            mEncoder = MediaCodec::CreateByComponentName(
+                    mCodecLooper, componentName.c_str());
+        } else {
+            mEncoder = MediaCodec::CreateByType(
+                    mCodecLooper, outputMIME.c_str(), true /* encoder */);
+        }
+#else
         mEncoder = MediaCodec::CreateByType(
                 mCodecLooper, outputMIME.c_str(), true /* encoder */);
+#endif
     }
 
     if (mEncoder == NULL) {
