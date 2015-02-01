@@ -134,7 +134,9 @@ void NuPlayer::RTSPSource::pause() {
         // Check if EOS or ERROR is received
         if (source != NULL && source->isFinished(mediaDurationUs)) {
             ALOGI("Nearing EOS...No Pause is issued");
-            mHandler->setAUTimeoutCheck(false);
+            if (mHandler != NULL) {
+                mHandler->setAUTimeoutCheck(false);
+            }
             return;
         }
     }
@@ -470,8 +472,9 @@ void NuPlayer::RTSPSource::onMessageReceived(const sp<AMessage> &msg) {
                 if (!info->mNPTMappingValid) {
                     // This is a live stream, we didn't receive any normal
                     // playtime mapping. We won't map to npt time.
-                    source->queueAccessUnit(accessUnit);
-                    break;
+                    info->mRTPTime = rtpTime;
+                    info->mNormalPlaytimeUs = 0ll;
+                    info->mNPTMappingValid = true;
                 }
 
                 int64_t nptUs =
