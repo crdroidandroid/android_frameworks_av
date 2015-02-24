@@ -21,7 +21,6 @@
 #include "HTTPLiveSource.h"
 
 #include "AnotherPacketSource.h"
-#include "LiveDataSource.h"
 #include "LiveSession.h"
 
 #include <media/IMediaHTTPService.h>
@@ -30,6 +29,10 @@
 #include <media/stagefright/foundation/AMessage.h>
 #include <media/stagefright/MediaErrors.h>
 #include <media/stagefright/MetaData.h>
+#include <media/stagefright/Utils.h>
+
+
+#include "ExtendedUtils.h"
 
 namespace android {
 
@@ -111,16 +114,35 @@ sp<AMessage> NuPlayer::HTTPLiveSource::getFormat(bool audio) {
     return format;
 }
 
+sp<MetaData> NuPlayer::HTTPLiveSource::getFormatMeta(bool audio) {
+    sp<AMessage> format = getFormat(audio);
+    sp<MetaData> meta = new MetaData;
+    convertMessageToMetaData(format, meta);
+
+    return meta;
+}
+
+
 status_t NuPlayer::HTTPLiveSource::feedMoreTSData() {
     return OK;
 }
 
 status_t NuPlayer::HTTPLiveSource::dequeueAccessUnit(
         bool audio, sp<ABuffer> *accessUnit) {
-    return mLiveSession->dequeueAccessUnit(
+    status_t err = mLiveSession->dequeueAccessUnit(
             audio ? LiveSession::STREAMTYPE_AUDIO
                   : LiveSession::STREAMTYPE_VIDEO,
             accessUnit);
+    if (err == OK && audio) {
+        sp<AMessage> format;
+        if (mLiveSession->getStreamFormat(LiveSession::STREAMTYPE_VIDEO, &format) != OK) {
+            // Detect the image in audio only clip
+            sp<AMessage> notify = dupNotify();
+            notify->setInt32("what", kWhatShowImage);
+            ExtendedUtils::detectAndPostImage(*accessUnit, notify);
+        }
+    }
+    return err;
 }
 
 status_t NuPlayer::HTTPLiveSource::getDuration(int64_t *durationUs) {

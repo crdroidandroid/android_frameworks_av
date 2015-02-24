@@ -1817,12 +1817,11 @@ sp<MetaData> ExtendedUtils::createPCMMetaFromSource(
     tPCMMeta->setInt32(kKeyChannelCount, channelCount);
     tPCMMeta->setInt32(kKeyChannelMask, cmask);
 
-    int64_t duration = 0;
+    int64_t duration = INT_MAX;
     if (!sMeta->findInt64(kKeyDuration, &duration)) {
-        ALOGW("No duration in meta");
-    } else {
-        tPCMMeta->setInt64(kKeyDuration, duration);
+        ALOGW("No duration in meta setting max duration");
     }
+    tPCMMeta->setInt64(kKeyDuration, duration);
 
     int32_t bitRate = -1;
     if (!sMeta->findInt32(kKeyBitRate, &bitRate)) {
@@ -1870,6 +1869,42 @@ void ExtendedUtils::overWriteAudioFormat(
     }
 
     return;
+}
+
+int32_t ExtendedUtils::getEncoderTypeFlags() {
+    int32_t flags = 0;
+
+    char mDeviceName[PROPERTY_VALUE_MAX];
+    property_get("ro.board.platform", mDeviceName, "0");
+    if (!strncmp(mDeviceName, "msm8909", 7)) {
+        flags |= OMXCodec::kHardwareCodecsOnly;
+    }
+
+    return flags;
+}
+
+void ExtendedUtils::cacheCaptureBuffers(sp<ICamera> camera, video_encoder encoder) {
+    if (camera != NULL) {
+        char mDeviceName[PROPERTY_VALUE_MAX];
+        property_get("ro.board.platform", mDeviceName, "0");
+        if (!strncmp(mDeviceName, "msm8909", 7)) {
+            int64_t token = IPCThreadState::self()->clearCallingIdentity();
+            String8 s = camera->getParameters();
+            CameraParameters params(s);
+            const char *enable;
+            if (encoder == VIDEO_ENCODER_H263 ||
+                encoder == VIDEO_ENCODER_MPEG_4_SP) {
+                enable = "1";
+            } else {
+                enable = "0";
+            }
+            params.set("cache-video-buffers", enable);
+            if (camera->setParameters(params.flatten()) != OK) {
+                ALOGE("Failed to enabled cached camera buffers");
+            }
+            IPCThreadState::self()->restoreCallingIdentity(token);
+        }
+    }
 }
 
 void ExtendedUtils::detectAndPostImage(const sp<ABuffer> accessUnit,
@@ -1931,16 +1966,14 @@ void ExtendedUtils::showImageInNativeWindow(const sp<AMessage> &msg,
     size_t stride = cinfo.output_width * 2;
     size_t dataSize = stride * cinfo.output_height;
     sp<ABuffer> outBuffer = new ABuffer(dataSize);
-    size_t i = 0;
-    while (cinfo.output_scanline < cinfo.output_height) {
+    for (size_t i = 0; i < cinfo.output_height; i++) {
         JSAMPLE* rowptr = (JSAMPLE*)(outBuffer->data() + stride * i);
         int32_t row_count = jpeg_read_scanlines(&cinfo, &rowptr, 1);
-        if (0 == row_count) {
+        if (row_count == 0) {
            ALOGV("row_count = 0");
            cinfo.output_scanline = cinfo.output_height;
            break;
         }
-        i++;
     }
     size_t bufwidth = cinfo.output_width;
     size_t bufheight = cinfo.output_height;
@@ -1950,31 +1983,26 @@ void ExtendedUtils::showImageInNativeWindow(const sp<AMessage> &msg,
 
     int32_t err = 0;
 
-    err = native_window_set_usage(
-            nativeWindow.get(),
+    err = native_window_set_usage(nativeWindow.get(),
             GRALLOC_USAGE_SW_READ_NEVER | GRALLOC_USAGE_SW_WRITE_OFTEN
             | GRALLOC_USAGE_HW_TEXTURE | GRALLOC_USAGE_EXTERNAL_DISP);
     if (err != 0) {
         ALOGE("native_window_set_usage failed: %d", err);
         return;
     }
-    err = native_window_set_scaling_mode(
-            nativeWindow.get(),
+    err = native_window_set_scaling_mode(nativeWindow.get(),
             NATIVE_WINDOW_SCALING_MODE_SCALE_TO_WINDOW);
     if (err != 0) {
         ALOGE("native_window_set_scaling_mode failed: %d", err);
         return;
     }
-    err = native_window_set_buffers_dimensions(
-            nativeWindow.get(),
-            bufwidth,
+    err = native_window_set_buffers_dimensions(nativeWindow.get(), bufwidth,
             bufheight);
     if (err != 0) {
         ALOGE("native_window_set_buffers_dimensions failed: %d", err);
         return;
     }
-    err = native_window_set_buffers_format(
-            nativeWindow.get(),
+    err = native_window_set_buffers_format(nativeWindow.get(),
             HAL_PIXEL_FORMAT_RGB_565);
     if (err != 0) {
         ALOGE("native_window_set_buffers_format failed: %d", err);
@@ -2035,42 +2063,6 @@ void ExtendedUtils::showImageInNativeWindow(const sp<AMessage> &msg,
     ALOGV("show the image in native window");
     format->setInt32("width", (int32_t)bufwidth);
     format->setInt32("height", (int32_t)bufheight);
-}
-
-int32_t ExtendedUtils::getEncoderTypeFlags() {
-    int32_t flags = 0;
-
-    char mDeviceName[PROPERTY_VALUE_MAX];
-    property_get("ro.board.platform", mDeviceName, "0");
-    if (!strncmp(mDeviceName, "msm8909", 7)) {
-        flags |= OMXCodec::kHardwareCodecsOnly;
-    }
-
-    return flags;
-}
-
-void ExtendedUtils::cacheCaptureBuffers(sp<ICamera> camera, video_encoder encoder) {
-    if (camera != NULL) {
-        char mDeviceName[PROPERTY_VALUE_MAX];
-        property_get("ro.board.platform", mDeviceName, "0");
-        if (!strncmp(mDeviceName, "msm8909", 7)) {
-            int64_t token = IPCThreadState::self()->clearCallingIdentity();
-            String8 s = camera->getParameters();
-            CameraParameters params(s);
-            const char *enable;
-            if (encoder == VIDEO_ENCODER_H263 ||
-                encoder == VIDEO_ENCODER_MPEG_4_SP) {
-                enable = "1";
-            } else {
-                enable = "0";
-            }
-            params.set("cache-video-buffers", enable);
-            if (camera->setParameters(params.flatten()) != OK) {
-                ALOGE("Failed to enabled cached camera buffers");
-            }
-            IPCThreadState::self()->restoreCallingIdentity(token);
-        }
-    }
 }
 
 }
@@ -2277,6 +2269,12 @@ bool ExtendedUtils::checkDPFromVOLHeader(const uint8_t *data, size_t size) {
     return false;
 }
 
+int32_t ExtendedUtils::getEncoderTypeFlags() {
+    return false;
+}
+
+void ExtendedUtils::cacheCaptureBuffers(sp<ICamera> camera, video_encoder encoder) {}
+
 void ExtendedUtils::detectAndPostImage(const sp<ABuffer> accessUnit,
         const sp<AMessage> &notify) {
     ARG_TOUCH(accessUnit);
@@ -2288,12 +2286,6 @@ void ExtendedUtils::showImageInNativeWindow(const sp<AMessage> &msg,
     ARG_TOUCH(msg);
     ARG_TOUCH(format);
 }
-
-int32_t ExtendedUtils::getEncoderTypeFlags() {
-    return false;
-}
-
-void ExtendedUtils::cacheCaptureBuffers(sp<ICamera> camera, video_encoder encoder) {}
 
 bool ExtendedUtils::RTSPStream::ParseURL_V6(
         AString *host, const char **colonPos) {

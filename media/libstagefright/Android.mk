@@ -106,7 +106,7 @@ LOCAL_SHARED_LIBRARIES := \
         libvorbisidec \
         libz \
         libpowermanager \
-        libjpeg
+        libjpeg \
 
 ifeq ($(BOARD_USES_QCOM_HARDWARE),true)
 ifneq ($(filter msm7x30 msm8660 msm8960,$(TARGET_BOARD_PLATFORM)),)

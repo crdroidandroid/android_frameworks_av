@@ -543,8 +543,6 @@ status_t ATSParser::Stream::parse(
             && (unsigned)mExpectedContinuityCounter != continuity_counter) {
         ALOGI("discontinuity on stream pid 0x%04x, Ignored", mElementaryPID);
 
-        mPayloadStarted = false;
-        mBuffer->setRange(0, 0);
         mExpectedContinuityCounter = -1;
         if (!payload_unit_start_indicator) {
             return OK;
@@ -872,13 +870,16 @@ void ATSParser::Stream::parseImageMetaData(const uint8_t *data, size_t size) {
         return;
     }
     ALOGV("found the album image (%s) with ID3 format in meta data", mime.string());
-    if (strcasecmp(mime, MEDIA_MIMETYPE_IMAGE_JPEG) != 0) {
+    if (strcasecmp(mime.string(), MEDIA_MIMETYPE_IMAGE_JPEG) != 0) {
         ALOGE("only support image/jpeg");
         return;
     }
     sp<AnotherPacketSource> audioSource =
             static_cast<AnotherPacketSource *>(mProgram->getSource(AUDIO).get());
-    if (audioSource != NULL) {
+    sp<AnotherPacketSource> videoSource =
+            static_cast<AnotherPacketSource *>(mProgram->getSource(VIDEO).get());
+    if (audioSource != NULL && videoSource == NULL) {
+        // attach the image in audio only clip
         sp<MetaData> meta = audioSource->getFormat();
         if (meta != NULL) {
             ALOGV("set AlbumArt in audio track source");

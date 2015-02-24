@@ -21,7 +21,6 @@
 #include "NuPlayer.h"
 
 #include "HTTPLiveSource.h"
-#include "HTTPLiveSourceCustom.h"
 #include "NuPlayerDecoder.h"
 #include "NuPlayerDecoderPassThrough.h"
 #include "NuPlayerDriver.h"
@@ -44,14 +43,11 @@
 #include <media/stagefright/MetaData.h>
 #include <gui/IGraphicBufferProducer.h>
 
-#include <cutils/properties.h>
-
 #include "avc_utils.h"
+#include "ExtendedUtils.h"
 
 #include "ESDS.h"
 #include <media/stagefright/Utils.h>
-
-#include "ExtendedUtils.h"
 
 namespace android {
 
@@ -182,11 +178,10 @@ NuPlayer::NuPlayer()
       mVideoScalingMode(NATIVE_WINDOW_SCALING_MODE_SCALE_TO_WINDOW),
       mStarted(false),
       mBuffering(false),
-      mPlaying(false),
-      mImageShowed(false),
       mSkipAudioFlushAfterSuspend(false),
       mSkipVideoFlushAfterSuspend(false),
-      mSeeking(false) {
+      mSeeking(false),
+      mImageDisplayed(false) {
 
     clearFlushComplete();
     mPlayerExtendedStats = (PlayerExtendedStats *)ExtendedStats::Create(
@@ -244,13 +239,7 @@ void NuPlayer::setDataSourceAsync(
 
     sp<Source> source;
     if (IsHTTPLiveURL(url)) {
-        char value[PROPERTY_VALUE_MAX];
-        property_get("persist.media.hls.enhancements", value, NULL);
-        if (atoi(value)) {
-            source = new HTTPLiveSourceCustom(notify, httpService, url, headers);
-        } else {
-            source = new HTTPLiveSource(notify, httpService, url, headers);
-        }
+        source = new HTTPLiveSource(notify, httpService, url, headers);
     } else if (!strncasecmp(url, "rtsp://", 7)) {
         source = new RTSPSource(
                 notify, httpService, url, headers, mUIDValid, mUID);
@@ -1473,12 +1462,11 @@ status_t NuPlayer::feedDecoderInputData(bool audio, const sp<AMessage> &msg) {
                         getDecoder(audio)->supportsSeamlessFormatChange(newFormat);
                     // treat seamless format change separately
                     formatChange = !seamlessFormatChange;
-
-                    if (mImageShowed && !audio) {
+                    if (mImageDisplayed && !audio) {
                         // If the image was showed in native window, video
                         // decoder needs to be changed to reconfigure
                         // native window
-                        mImageShowed = false;
+                        mImageDisplayed = false;
                         formatChange = true;
                     }
                 }
@@ -2317,7 +2305,7 @@ void NuPlayer::onSourceNotify(const sp<AMessage> &msg) {
                     && format->findInt32("height", &height)) {
                 ALOGV("show the image with width = %ld,  height = %ld", width, height);
                 notifyListener(MEDIA_SET_VIDEO_SIZE, width, height);
-                mImageShowed = true;
+                mImageDisplayed = true;
             }
             break;
         }
