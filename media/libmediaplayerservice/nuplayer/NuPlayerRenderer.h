@@ -170,6 +170,7 @@ private:
 
     bool mPaused;
     bool mVideoSampleReceived;
+    bool mAudioRenderingStarted;
     bool mVideoRenderingStarted;
     int32_t mVideoRenderingStartGeneration;
     int32_t mAudioRenderingStartGeneration;
@@ -183,6 +184,8 @@ private:
     int32_t mTotalBuffersQueued;
     int32_t mLastAudioBufferDrained;
     sp<AWakeLock> mWakeLock;
+
+    List<sp<AMessage> > mPendingInputMessages;
 
     size_t fillAudioBuffer(void *buffer, size_t size);
 
