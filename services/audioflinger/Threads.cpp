@@ -2645,6 +2645,11 @@ bool AudioFlinger::PlaybackThread::threadLoop()
                     ssize_t ret = threadLoop_write();
                     if (ret < 0) {
                         mBytesRemaining = 0;
+#ifdef QCOM_DIRECTTRACK
+                    } else if(ret > mBytesRemaining) {
+                        mBytesWritten += mBytesRemaining;
+                        mBytesRemaining = 0;
+#endif
                     } else {
                         mBytesWritten += ret;
                         mBytesRemaining -= ret;
@@ -2851,11 +2856,15 @@ AudioFlinger::MixerThread::MixerThread(const sp<AudioFlinger>& audioFlinger, Aud
     }
     if (initFastMixer) {
         audio_format_t fastMixerFormat;
+#ifndef QCOM_DIRECTTRACK
         if (mMixerBufferEnabled && mEffectBufferEnabled) {
             fastMixerFormat = AUDIO_FORMAT_PCM_FLOAT;
         } else {
+#endif
             fastMixerFormat = AUDIO_FORMAT_PCM_16_BIT;
+#ifndef QCOM_DIRECTTRACK
         }
+#endif
         if (mFormat != fastMixerFormat) {
             // change our Sink format to accept our intermediate precision
             mFormat = fastMixerFormat;
