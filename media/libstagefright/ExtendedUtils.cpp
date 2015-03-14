@@ -892,6 +892,16 @@ void ExtendedUtils::ShellProp::getRtpPortRange(unsigned *start, unsigned *end) {
     ALOGV("rtp port_start = %u, port_end = %u", *start, *end);
 }
 
+bool ExtendedUtils::ShellProp::isCustomHLSEnabled() {
+    bool retVal = false;
+    char customHLS[PROPERTY_VALUE_MAX];
+    property_get("persist.sys.media.hls-custom", customHLS, "0");
+    if (atoi(customHLS)) {
+        retVal = true;
+    }
+    return retVal;
+}
+
 void ExtendedUtils::setBFrames(
         OMX_VIDEO_PARAM_MPEG4TYPE &mpeg4type, const char* componentName) {
     //ignore non QC components
@@ -1166,9 +1176,9 @@ sp<MediaExtractor> ExtendedUtils::MediaExtractor_CreateIfNeeded(sp<MediaExtracto
     const char * extFormats[ ] = {
         MEDIA_MIMETYPE_AUDIO_AMR_WB_PLUS,
         MEDIA_MIMETYPE_VIDEO_HEVC,
+#ifdef DOLBY_UDC
         MEDIA_MIMETYPE_AUDIO_AC3,
         MEDIA_MIMETYPE_AUDIO_EAC3,
-#ifdef DOLBY_UDC
         MEDIA_MIMETYPE_AUDIO_EAC3_JOC,
 #endif
         MEDIA_MIMETYPE_AUDIO_AAC,
@@ -2194,6 +2204,10 @@ bool ExtendedUtils::ShellProp::isSmoothStreamingEnabled() {
 void ExtendedUtils::ShellProp::getRtpPortRange(unsigned *start, unsigned *end) {
     *start = kDefaultRtpPortRangeStart;
     *end = kDefaultRtpPortRangeEnd;
+}
+
+bool ExtendedUtils::ShellProp::isCustomHLSEnabled() {
+    return false;
 }
 
 void ExtendedUtils::setBFrames(
