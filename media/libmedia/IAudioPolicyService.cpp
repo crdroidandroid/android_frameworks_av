@@ -23,6 +23,7 @@
 
 #include <binder/Parcel.h>
 
+#include <media/AudioEffect.h>
 #include <media/IAudioPolicyService.h>
 
 #include <system/audio.h>
@@ -70,6 +71,8 @@ enum {
     RELEASE_SOUNDTRIGGER_SESSION,
     GET_PHONE_STATE
 };
+
+#define MAX_ITEMS_PER_LIST 1024
 
 class BpAudioPolicyService : public BpInterface<IAudioPolicyService>
 {
@@ -916,16 +919,18 @@ status_t BnAudioPolicyService::onTransact(
             CHECK_INTERFACE(IAudioPolicyService, data, reply);
             int audioSession = data.readInt32();
             uint32_t count = data.readInt32();
+            if (count > AudioEffect::kMaxPreProcessing) {
+                count = AudioEffect::kMaxPreProcessing;
+            }
             uint32_t retCount = count;
-            effect_descriptor_t *descriptors =
-                    (effect_descriptor_t *)new char[count * sizeof(effect_descriptor_t)];
+            effect_descriptor_t *descriptors = new effect_descriptor_t[count];
             status_t status = queryDefaultPreProcessing(audioSession, descriptors, &retCount);
             reply->writeInt32(status);
             if (status != NO_ERROR && status != NO_MEMORY) {
                 retCount = 0;
             }
             reply->writeInt32(retCount);
-            if (retCount) {
+            if (retCount != 0) {
                 if (retCount < count) {
                     count = retCount;
                 }
@@ -949,10 +954,18 @@ status_t BnAudioPolicyService::onTransact(
             audio_port_role_t role = (audio_port_role_t)data.readInt32();
             audio_port_type_t type = (audio_port_type_t)data.readInt32();
             unsigned int numPortsReq = data.readInt32();
+            if (numPortsReq > MAX_ITEMS_PER_LIST) {
+                numPortsReq = MAX_ITEMS_PER_LIST;
+            }
             unsigned int numPorts = numPortsReq;
-            unsigned int generation;
             struct audio_port *ports =
                     (struct audio_port *)calloc(numPortsReq, sizeof(struct audio_port));
+            if (ports == NULL) {
+                reply->writeInt32(NO_MEMORY);
+                reply->writeInt32(0);
+                return NO_ERROR;
+            }
+            unsigned int generation;
             status_t status = listAudioPorts(role, type, &numPorts, ports, &generation);
             reply->writeInt32(status);
             reply->writeInt32(numPorts);
@@ -1006,11 +1019,19 @@ status_t BnAudioPolicyService::onTransact(
         case LIST_AUDIO_PATCHES: {
             CHECK_INTERFACE(IAudioPolicyService, data, reply);
             unsigned int numPatchesReq = data.readInt32();
+            if (numPatchesReq > MAX_ITEMS_PER_LIST) {
+                numPatchesReq = MAX_ITEMS_PER_LIST;
+            }
             unsigned int numPatches = numPatchesReq;
-            unsigned int generation;
             struct audio_patch *patches =
                     (struct audio_patch *)calloc(numPatchesReq,
                                                  sizeof(struct audio_patch));
+            if (patches == NULL) {
+                reply->writeInt32(NO_MEMORY);
+                reply->writeInt32(0);
+                return NO_ERROR;
+            }
+            unsigned int generation;
             status_t status = listAudioPatches(&numPatches, patches, &generation);
             reply->writeInt32(status);
             reply->writeInt32(numPatches);
