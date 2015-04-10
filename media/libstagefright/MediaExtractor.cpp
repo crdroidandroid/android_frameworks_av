@@ -131,7 +131,7 @@ retry:
         ret = new AACExtractor(source, meta);
     } else if (!strcasecmp(mime, MEDIA_MIMETYPE_CONTAINER_MPEG2PS)) {
         ret = new MPEG2PSExtractor(source);
-    } else if (sPlugin.create) {
+    } else if (!isDrm && sPlugin.create) {
         ret = sPlugin.create(source, mime, meta);
     }
 
@@ -149,7 +149,9 @@ retry:
 
     if (ret != NULL) {
 
-        if (!secondPass && ( ret->countTracks() == 0 ||
+        if (!(!strcasecmp(mime, MEDIA_MIMETYPE_CONTAINER_MPEG4) &&
+                (source->flags() & DataSource::kIsCachingDataSource)) &&
+                    !isDrm && !secondPass && ( ret->countTracks() == 0 ||
                     (!strncasecmp("video/", mime, 6) && ret->countTracks() < 2) ) ) {
             secondPass = true;
             goto retry;

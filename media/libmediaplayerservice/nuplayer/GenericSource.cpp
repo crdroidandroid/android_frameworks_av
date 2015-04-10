@@ -131,23 +131,37 @@ sp<MetaData> NuPlayer::GenericSource::getFileFormatMeta() const {
 
 status_t NuPlayer::GenericSource::initFromDataSource() {
     sp<MediaExtractor> extractor;
+    String8 mimeType;
+    float confidence;
+    sp<AMessage> dummy;
+    bool isWidevineStreaming = false;
 
     CHECK(mDataSource != NULL);
 
     if (mIsWidevine) {
-        String8 mimeType;
-        float confidence;
-        sp<AMessage> dummy;
-        bool success;
-
-        success = SniffWVM(mDataSource, &mimeType, &confidence, &dummy);
-        if (!success
-                || strcasecmp(
+        isWidevineStreaming = SniffWVM(
+                mDataSource, &mimeType, &confidence, &dummy);
+        if (!isWidevineStreaming ||
+                strcasecmp(
                     mimeType.string(), MEDIA_MIMETYPE_CONTAINER_WVM)) {
             ALOGE("unsupported widevine mime: %s", mimeType.string());
             return UNKNOWN_ERROR;
         }
+    } else if (mIsStreaming) {
+        if (mSniffedMIME.empty()) {
+            if (!mDataSource->sniff(&mimeType, &confidence, &dummy)) {
+                return UNKNOWN_ERROR;
+            }
+            mSniffedMIME = mimeType.string();
+        }
+        isWidevineStreaming = !strcasecmp(
+                mSniffedMIME.c_str(), MEDIA_MIMETYPE_CONTAINER_WVM);
+    }
 
+    if (isWidevineStreaming) {
+        // we don't want cached source for widevine streaming.
+        mCachedSource.clear();
+        mDataSource = mHttpSource;
         mWVMExtractor = new WVMExtractor(mDataSource);
         mWVMExtractor->setAdaptiveStreamingMode(true);
         if (mUIDValid) {
@@ -182,14 +196,6 @@ status_t NuPlayer::GenericSource::initFromDataSource() {
             if (mFileMeta->findCString(kKeyMIMEType, &fileMime)
                     && !strncasecmp(fileMime, "video/wvm", 9)) {
                 mIsWidevine = true;
-                if (!mUri.empty()) {
-                  // streaming, but the app forgot to specify widevine:// url
-                  mWVMExtractor = static_cast<WVMExtractor *>(extractor.get());
-                  mWVMExtractor->setAdaptiveStreamingMode(true);
-                  if (mUIDValid) {
-                    mWVMExtractor->setUID(mUID);
-                  }
-                }
             }
         }
     }
@@ -241,6 +247,8 @@ status_t NuPlayer::GenericSource::initFromDataSource() {
                     if (mUIDValid) {
                         extractor->setUID(mUID);
                     }
+                } else {
+                     mIsWidevine = false;
                 }
             }
         }
@@ -263,6 +271,12 @@ status_t NuPlayer::GenericSource::initFromDataSource() {
         }
     }
 
+    mBitrate = totalBitrate;
+
+    return OK;
+}
+
+status_t NuPlayer::GenericSource::startSources() {
     // Start the selected A/V tracks now before we start buffering.
     // Widevine sources might re-initialize crypto when starting, if we delay
     // this to start(), all data buffered during prepare would be wasted.
@@ -297,8 +311,6 @@ status_t NuPlayer::GenericSource::initFromDataSource() {
         ALOGE("failed to start video track!");
         return UNKNOWN_ERROR;
     }
-
-    mBitrate = totalBitrate;
 
     return OK;
 }
@@ -445,6 +457,32 @@ void NuPlayer::GenericSource::onPrepareAsync() {
             | FLAG_CAN_SEEK_FORWARD
             | FLAG_CAN_SEEK);
 
+    if (mIsSecure) {
+        // secure decoders must be instantiated before starting widevine source
+        sp<AMessage> reply = new AMessage(kWhatSecureDecodersInstantiated, id());
+        notifyInstantiateSecureDecoders(reply);
+    } else {
+        finishPrepareAsync();
+    }
+}
+
+void NuPlayer::GenericSource::onSecureDecodersInstantiated(status_t err) {
+    if (err != OK) {
+        ALOGE("Failed to instantiate secure decoders!");
+        notifyPreparedAndCleanup(err);
+        return;
+    }
+    finishPrepareAsync();
+}
+
+void NuPlayer::GenericSource::finishPrepareAsync() {
+    status_t err = startSources();
+    if (err != OK) {
+        ALOGE("Failed to init start data source!");
+        notifyPreparedAndCleanup(err);
+        return;
+    }
+
     if (mIsStreaming) {
         mPrepareBuffering = true;
 
@@ -463,6 +501,7 @@ void NuPlayer::GenericSource::notifyPreparedAndCleanup(status_t err) {
         mDataSource.clear();
         mCachedSource.clear();
         mHttpSource.clear();
+        mBitrate = -1;
 
         cancelPollBuffering();
     }
@@ -678,10 +717,10 @@ void NuPlayer::GenericSource::sendCacheStats() {
     int32_t kbps = 0;
     status_t err = UNKNOWN_ERROR;
 
-    if (mCachedSource != NULL) {
-        err = mCachedSource->getEstimatedBandwidthKbps(&kbps);
-    } else if (mWVMExtractor != NULL) {
+    if (mWVMExtractor != NULL) {
         err = mWVMExtractor->getEstimatedBandwidthKbps(&kbps);
+    } else if (mCachedSource != NULL) {
+        err = mCachedSource->getEstimatedBandwidthKbps(&kbps);
     }
 
     if (err == OK) {
@@ -703,7 +742,13 @@ void NuPlayer::GenericSource::onPollBuffering() {
     int64_t cachedDurationUs = -1ll;
     ssize_t cachedDataRemaining = -1;
 
-    if (mCachedSource != NULL) {
+    ALOGW_IF(mWVMExtractor != NULL && mCachedSource != NULL,
+            "WVMExtractor and NuCachedSource both present");
+
+    if (mWVMExtractor != NULL) {
+        cachedDurationUs =
+                mWVMExtractor->getCachedDurationUs(&finalStatus);
+    } else if (mCachedSource != NULL) {
         cachedDataRemaining =
                 mCachedSource->approxDataRemaining(&finalStatus);
 
@@ -719,9 +764,6 @@ void NuPlayer::GenericSource::onPollBuffering() {
                 cachedDurationUs = cachedDataRemaining * 8000000ll / bitrate;
             }
         }
-    } else if (mWVMExtractor != NULL) {
-        cachedDurationUs
-            = mWVMExtractor->getCachedDurationUs(&finalStatus);
     }
 
     if (finalStatus != OK) {
@@ -889,6 +931,14 @@ void NuPlayer::GenericSource::onMessageReceived(const sp<AMessage> &msg) {
       case kWhatReadBuffer:
       {
           onReadBuffer(msg);
+          break;
+      }
+
+      case kWhatSecureDecodersInstantiated:
+      {
+          int32_t err;
+          CHECK(msg->findInt32("err", &err));
+          onSecureDecodersInstantiated(err);
           break;
       }
 

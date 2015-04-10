@@ -16,7 +16,7 @@
  * code that are surrounded by "DOLBY..." are copyrighted and
  * licensed separately, as follows:
  *
- *  (C) 2011-2014 Dolby Laboratories, Inc.
+ *  (C) 2011-2015 Dolby Laboratories, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -1880,12 +1880,6 @@ void OMXCodec::setComponentRole(
             "audio_decoder.evrchw", "audio_encoder.evrc" },
         { MEDIA_MIMETYPE_AUDIO_QCELP,
             "audio_decoder,qcelp13Hw", "audio_encoder.qcelp13" },
-#ifdef DOLBY_UDC
-        { MEDIA_MIMETYPE_AUDIO_AC3,
-            "audio_decoder.ac3", NULL },
-        { MEDIA_MIMETYPE_AUDIO_EAC3,
-            "audio_decoder.ec3", NULL },
-#endif // DOLBY_END
 #endif
         { MEDIA_MIMETYPE_VIDEO_AVC,
             "video_decoder.avc", "video_encoder.avc" },
@@ -1913,9 +1907,9 @@ void OMXCodec::setComponentRole(
             "audio_decoder.ac3", "audio_encoder.ac3" },
 #ifdef DOLBY_UDC
         { MEDIA_MIMETYPE_AUDIO_EAC3,
-            "audio_decoder.ec3", NULL },
+            "audio_decoder.eac3", NULL },
         { MEDIA_MIMETYPE_AUDIO_EAC3_JOC,
-            "audio_decoder.ec3_joc", NULL },
+            "audio_decoder.eac3_joc", NULL },
 #endif // DOLBY_END
 #ifdef DTS_CODEC_M_
         { MEDIA_MIMETYPE_AUDIO_DTS,
@@ -2791,6 +2785,10 @@ void OMXCodec::on_message(const omx_message &msg) {
                 status_t err = freeBuffer(kPortIndexOutput, i);
                 CHECK_EQ(err, (status_t)OK);
 
+            } else if (mPortStatus[kPortIndexOutput] == ENABLED
+                       && (flags & OMX_BUFFERFLAG_DATACORRUPT)) {
+                CODEC_LOGV("Filled buffer data is corrupted, drop buffer");
+                mBufferFilled.signal();
 #if 0
             } else if (mPortStatus[kPortIndexOutput] == ENABLED
                        && (flags & OMX_BUFFERFLAG_EOS)) {

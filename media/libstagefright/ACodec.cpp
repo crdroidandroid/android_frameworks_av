@@ -17,7 +17,7 @@
  * code that are surrounded by "DOLBY..." are copyrighted and
  * licensed separately, as follows:
  *
- *  (C) 2011-2014 Dolby Laboratories, Inc.
+ *  (C) 2011-2015 Dolby Laboratories, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -1198,12 +1198,6 @@ status_t ACodec::setComponentRole(
             "audio_decoder.evrchw", "audio_encoder.evrc" },
         { MEDIA_MIMETYPE_AUDIO_QCELP,
             "audio_decoder,qcelp13Hw", "audio_encoder.qcelp13" },
-#ifdef DOLBY_UDC
-        { MEDIA_MIMETYPE_AUDIO_AC3,
-            "audio_decoder.ac3", NULL },
-        { MEDIA_MIMETYPE_AUDIO_EAC3,
-            "audio_decoder.ec3", NULL },
-#endif // DOLBY_END
 #endif
         { MEDIA_MIMETYPE_AUDIO_AAC,
             "audio_decoder.aac", "audio_encoder.aac" },
@@ -1215,14 +1209,6 @@ status_t ACodec::setComponentRole(
             "audio_decoder.g711mlaw", "audio_encoder.g711mlaw" },
         { MEDIA_MIMETYPE_AUDIO_G711_ALAW,
             "audio_decoder.g711alaw", "audio_encoder.g711alaw" },
-#ifdef ENABLE_AV_ENHANCEMENTS
-#ifdef DOLBY_UDC
-        { MEDIA_MIMETYPE_AUDIO_EAC3,
-            "audio_decoder.ec3", NULL },
-        { MEDIA_MIMETYPE_AUDIO_EAC3_JOC,
-            "audio_decoder.ec3_joc", NULL },
-#endif // DOLBY_END
-#endif
         { MEDIA_MIMETYPE_VIDEO_AVC,
             "video_decoder.avc", "video_encoder.avc" },
         { MEDIA_MIMETYPE_VIDEO_HEVC,
@@ -1264,6 +1250,12 @@ status_t ACodec::setComponentRole(
 #endif
         { MEDIA_MIMETYPE_AUDIO_EAC3,
             "audio_decoder.eac3", "audio_encoder.eac3" },
+#ifdef ENABLE_AV_ENHANCEMENTS
+#ifdef DOLBY_UDC
+        { MEDIA_MIMETYPE_AUDIO_EAC3_JOC,
+            "audio_decoder.eac3_joc", NULL },
+#endif // DOLBY_END
+#endif
     };
 
     static const size_t kNumMimeToRole =
@@ -5028,6 +5020,13 @@ void ACodec::BaseState::onOutputBufferDrained(const sp<AMessage> &msg) {
         info->mStatus = BufferInfo::OWNED_BY_US;
     }
 
+    if (mCodec->mMediaExtendedStats != NULL) {
+        int32_t seeking;
+        if (info->mData->meta()->findInt32("seeking", &seeking)) {
+            mCodec->mMediaExtendedStats->profileStop(STATS_PROFILE_SEEK);
+        }
+    }
+
     PortMode mode = getPortMode(kPortIndexOutput);
 
     switch (mode) {
@@ -5426,12 +5425,84 @@ bool ACodec::LoadedState::onConfigureComponent(
 
     status_t err = mCodec->configureCodec(mime.c_str(), msg);
 
-    if (err != OK) {
+    if (err != OK &&  !strncmp(mime.c_str(), "video/", strlen("video/"))) {
         ALOGE("[%s] configureCodec returning error %d",
               mCodec->mComponentName.c_str(), err);
 
-        mCodec->signalError(OMX_ErrorUndefined, makeNoSideEffectStatus(err));
-        return false;
+        int32_t encoder;
+        if (!msg->findInt32("encoder", &encoder)) {
+            encoder = false;
+        }
+
+        if (!encoder ) {
+            Vector<OMXCodec::CodecNameAndQuirks> matchingCodecs;
+
+            OMXCodec::findMatchingCodecs(
+                mime.c_str(),
+                encoder, // createEncoder
+                NULL,  // matchComponentName
+                0,     // flags
+                &matchingCodecs);
+
+            status_t err = mCodec->mOMX->freeNode(mCodec->mNode);
+
+            if (err != OK) {
+                ALOGE("Failed to freeNode");
+                mCodec->signalError(OMX_ErrorUndefined, makeNoSideEffectStatus(err));
+                return false;
+            }
+
+            mCodec->mNode = NULL;
+            AString componentName;
+            sp<CodecObserver> observer = new CodecObserver;
+            for (size_t matchIndex = 0; matchIndex < matchingCodecs.size();
+                    ++matchIndex) {
+                componentName = matchingCodecs.itemAt(matchIndex).mName.string();
+                if (!strcmp(mCodec->mComponentName.c_str(), componentName.c_str())) {
+                    continue;
+                }
+
+                status_t err = mCodec->mOMX->allocateNode(componentName.c_str(), observer, &mCodec->mNode);
+
+                if (err == OK) {
+                    break;
+                } else {
+                    ALOGW("Allocating component '%s' failed, try next one.", componentName.c_str());
+                }
+
+                mCodec->mNode = NULL;
+            }
+
+            if (mCodec->mNode == NULL) {
+                if (!mime.empty()) {
+                    ALOGE("Unable to instantiate a %scoder for type '%s'.",
+                            encoder ? "en" : "de", mime.c_str());
+                } else {
+                    ALOGE("Unable to instantiate codec '%s'.", componentName.c_str());
+                }
+
+                mCodec->signalError(OMX_ErrorUndefined, makeNoSideEffectStatus(err));
+                return false;
+            }
+
+            sp<AMessage> notify = new AMessage(kWhatOMXMessage, mCodec->id());
+            observer->setNotificationMessage(notify);
+            mCodec->mComponentName = componentName;
+
+            err = mCodec->configureCodec(mime.c_str(), msg);
+
+            if (err != OK) {
+                mCodec->signalError(OMX_ErrorUndefined, makeNoSideEffectStatus(err));
+                return false;
+            }
+        } else {
+            if (err != OK) {
+                ALOGE("[%s] configureCodec returning error %d",
+                        mCodec->mComponentName.c_str(), err);
+                mCodec->signalError(OMX_ErrorUndefined, makeNoSideEffectStatus(err));
+                return false;
+             }
+        }
     }
 
     sp<RefBase> obj;
@@ -5453,6 +5524,7 @@ bool ACodec::LoadedState::onConfigureComponent(
     {
         sp<AMessage> notify = mCodec->mNotify->dup();
         notify->setInt32("what", CodecBase::kWhatComponentConfigured);
+        notify->setString("componentName", mCodec->mComponentName.c_str());
         notify->setMessage("input-format", mCodec->mInputFormat);
         notify->setMessage("output-format", mCodec->mOutputFormat);
         notify->post();
