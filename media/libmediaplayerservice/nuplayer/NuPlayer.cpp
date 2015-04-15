@@ -1036,6 +1036,8 @@ void NuPlayer::onResume() {
         return;
     }
     mPaused = false;
+    PLAYER_STATS(profileStart, STATS_PROFILE_RESUME);
+
     if (mSource != NULL) {
         mSource->resume();
     } else {
@@ -1059,7 +1061,6 @@ void NuPlayer::onResume() {
         ALOGW("resume called when renderer is gone or not set");
     }
     PLAYER_STATS(notifyPlaying, true);
-    PLAYER_STATS(profileStart, STATS_PROFILE_RESUME);
 }
 
 status_t NuPlayer::onInstantiateSecureDecoders() {
@@ -1106,7 +1107,14 @@ void NuPlayer::onStart() {
         flags |= Renderer::FLAG_REAL_TIME;
     }
 
+    int64_t duration = 0ll;
     sp<MetaData> audioMeta = mSource->getFormatMeta(true /* audio */);
+    if (audioMeta.get() && (
+            !audioMeta->findInt64(kKeyDuration, &duration) || duration == 0)) {
+        mSource->getCachedDuration(&duration);
+        audioMeta->setInt64(kKeyDuration, duration);
+    }
+
     audio_stream_type_t streamType = AUDIO_STREAM_MUSIC;
     if (mAudioSink != NULL) {
         streamType = mAudioSink->getAudioStreamType();
@@ -2214,7 +2222,9 @@ void NuPlayer::onSourceNotify(const sp<AMessage> &msg) {
             if (mStarted && !mPausedByClient) {
                 ALOGI("buffer low, pausing...");
 
+                PLAYER_STATS(profileStart, STATS_PROFILE_PAUSE);
                 onPause();
+                PLAYER_STATS(profileStop, STATS_PROFILE_PAUSE);
             }
             // fall-thru
         }
@@ -2230,7 +2240,8 @@ void NuPlayer::onSourceNotify(const sp<AMessage> &msg) {
             // ignore if not playing
             if (mStarted && !mPausedByClient) {
                 ALOGI("buffer ready, resuming...");
-
+                PLAYER_STATS(notifyPlaying, true);
+                PLAYER_STATS(profileStart, STATS_PROFILE_RESUME);
                 onResume();
             }
             // fall-thru
