@@ -932,7 +932,10 @@ void AudioPolicyManager::setPhoneState(audio_mode_t state)
             // Move tracks associated to this strategy from previous output to new output
             for (int i = AUDIO_STREAM_SYSTEM; i < (int)AUDIO_STREAM_CNT; i++) {
                 ALOGV(" Invalidate on call mode for stream :: %d ", i);
-                //FIXME see fixme on name change
+                if (i == AUDIO_STREAM_PATCH) {
+                    ALOGV("not calling invalidate for AUDIO_STREAM_PATCH");
+                    continue;
+                }
                 mpClientInterface->invalidateStream((audio_stream_type_t)i);
             }
         }
@@ -1020,7 +1023,10 @@ void AudioPolicyManager::setPhoneState(audio_mode_t state)
        //call invalidate tracks so that any open streams can fall back to deep buffer/compress path from ULL
        for (int i = AUDIO_STREAM_SYSTEM; i < (int)AUDIO_STREAM_CNT; i++) {
            ALOGD("Invalidate after call ends for stream :: %d ", i);
-           //FIXME see fixme on name change
+           if (i == AUDIO_STREAM_PATCH) {
+               ALOGV("not calling invalidate for AUDIO_STREAM_PATCH");
+               continue;
+           }
            mpClientInterface->invalidateStream((audio_stream_type_t)i);
        }
     }
@@ -2177,6 +2183,11 @@ status_t AudioPolicyManager::getInputForAttr(const audio_attributes_t *attr,
     audio_source_t halInputSource;
     AudioMix *policyMix = NULL;
 
+    if (inputSource == AUDIO_SOURCE_DEFAULT) {
+        inputSource = AUDIO_SOURCE_MIC;
+    }
+    halInputSource = inputSource;
+
 #ifdef VOICE_CONCURRENCY
 
     char propValue[PROPERTY_VALUE_MAX];
@@ -2234,14 +2245,8 @@ status_t AudioPolicyManager::getInputForAttr(const audio_attributes_t *attr,
     }
 
 #endif
-
-    if (inputSource == AUDIO_SOURCE_DEFAULT) {
-        inputSource = AUDIO_SOURCE_MIC;
-    }
-    halInputSource = inputSource;
-
     if (inputSource == AUDIO_SOURCE_REMOTE_SUBMIX &&
-            strncmp(attr->tags, "addr=", strlen("addr=")) == 0) {
+        strncmp(attr->tags, "addr=", strlen("addr=")) == 0) {
         device = AUDIO_DEVICE_IN_REMOTE_SUBMIX;
         address = String8(attr->tags + strlen("addr="));
         ssize_t index = mPolicyMixes.indexOfKey(address);
@@ -2276,12 +2281,20 @@ status_t AudioPolicyManager::getInputForAttr(const audio_attributes_t *attr,
         } else if (audio_is_remote_submix_device(device)) {
             address = String8("0");
             *inputType = API_INPUT_MIX_CAPTURE;
+
         } else {
             *inputType = API_INPUT_LEGACY;
         }
-#ifdef QCOM_DIRECTTRACK
+
+        /*The below code is intentionally not ported.
+        It's not needed to update the channel mask based on source because
+        the source is sent to audio HAL through set_parameters().
+        For example, if source = VOICE_CALL, does not mean we need to capture two channels.
+        If the sound recorder app selects AMR as encoding format but source as RX+TX,
+        we need both in ONE channel. So we use the channels set by the app and use source
+        to tell the driver what needs to captured (RX only, TX only, or RX+TX ).*/
         // adapt channel selection to input source
-        switch (inputSource) {
+        /*switch (inputSource) {
         case AUDIO_SOURCE_VOICE_UPLINK:
             channelMask |= AUDIO_CHANNEL_IN_VOICE_UPLINK;
             break;
@@ -2293,8 +2306,8 @@ status_t AudioPolicyManager::getInputForAttr(const audio_attributes_t *attr,
             break;
         default:
             break;
-        }
-#endif
+        }*/
+
         if (inputSource == AUDIO_SOURCE_HOTWORD) {
             ssize_t index = mSoundTriggerSessions.indexOfKey(session);
             if (index >= 0) {
@@ -2369,7 +2382,7 @@ status_t AudioPolicyManager::getInputForAttr(const audio_attributes_t *attr,
     inputDesc->mIsSoundTrigger = isSoundTrigger;
     inputDesc->mPolicyMix = policyMix;
 
-    ALOGV("getInputForAttr() returns input type = %d", inputType);
+    ALOGV("getInputForAttr() returns input type = %d", *inputType);
 
     addInput(*input, inputDesc);
     mpClientInterface->onAudioPortListUpdate();
@@ -2435,7 +2448,7 @@ status_t AudioPolicyManager::startInput(audio_io_handle_t input,
         // Move tracks associated to this strategy from previous output to new output
         for (int i = AUDIO_STREAM_SYSTEM; i < (int)AUDIO_STREAM_CNT; i++) {
             // Do not call invalidate for ENFORCED_AUDIBLE (otherwise pops are seen for camcorder)
-            if (i != AUDIO_STREAM_ENFORCED_AUDIBLE) {
+            if ((i != AUDIO_STREAM_ENFORCED_AUDIBLE) && (i != AUDIO_STREAM_PATCH)) {
                ALOGD("Invalidate on releaseInput for stream :: %d ", i);
                //FIXME see fixme on name change
                mpClientInterface->invalidateStream((audio_stream_type_t)i);
@@ -2558,8 +2571,8 @@ status_t AudioPolicyManager::stopInput(audio_io_handle_t input,
         //call invalidate tracks so that any open streams can fall back to deep buffer/compress path from ULL
         for (int i = AUDIO_STREAM_SYSTEM; i < (int)AUDIO_STREAM_CNT; i++) {
             //Do not call invalidate for ENFORCED_AUDIBLE (otherwise pops are seen for camcorder stop tone)
-            if (i != AUDIO_STREAM_ENFORCED_AUDIBLE) {
-               ALOGD(" Invalidate on stopInput for stream :: %d ", i);
+            if ((i != AUDIO_STREAM_ENFORCED_AUDIBLE) && (i != AUDIO_STREAM_PATCH)) {
+                ALOGD("Invalidate on stopInput for stream :: %d ", i);
                //FIXME see fixme on name change
                mpClientInterface->invalidateStream((audio_stream_type_t)i);
             }
@@ -2691,7 +2704,7 @@ status_t AudioPolicyManager::setStreamVolumeIndex(audio_stream_type_t stream,
         audio_devices_t availableOutputDeviceTypes = mAvailableOutputDevices.types();
         if (((device == AUDIO_DEVICE_OUT_DEFAULT) &&
               ((availableOutputDeviceTypes & AUDIO_DEVICE_OUT_FM) != AUDIO_DEVICE_OUT_FM)) ||
-              (device == curDevice)) {
+              ((curDevice & strategyDevice) != 0)) {
 #else
         if ((device == AUDIO_DEVICE_OUT_DEFAULT) || ((curDevice & strategyDevice) != 0)) {
 #endif
@@ -5218,7 +5231,7 @@ void AudioPolicyManager::checkA2dpSuspend()
     if (mA2dpSuspended) {
         if ((!isScoConnected ||
              ((mForceUse[AUDIO_POLICY_FORCE_FOR_COMMUNICATION] != AUDIO_POLICY_FORCE_BT_SCO) &&
-              (mForceUse[AUDIO_POLICY_FORCE_FOR_RECORD] != AUDIO_POLICY_FORCE_BT_SCO))) ||
+              (mForceUse[AUDIO_POLICY_FORCE_FOR_RECORD] != AUDIO_POLICY_FORCE_BT_SCO))) &&
              ((mPhoneState != AUDIO_MODE_IN_CALL) &&
               (mPhoneState != AUDIO_MODE_RINGTONE))) {
 
@@ -5230,7 +5243,7 @@ void AudioPolicyManager::checkA2dpSuspend()
     } else {
         if ((isScoConnected &&
              ((mForceUse[AUDIO_POLICY_FORCE_FOR_COMMUNICATION] == AUDIO_POLICY_FORCE_BT_SCO) ||
-              (mForceUse[AUDIO_POLICY_FORCE_FOR_RECORD] == AUDIO_POLICY_FORCE_BT_SCO))) &&
+              (mForceUse[AUDIO_POLICY_FORCE_FOR_RECORD] == AUDIO_POLICY_FORCE_BT_SCO))) ||
              ((mPhoneState == AUDIO_MODE_IN_CALL) ||
               (mPhoneState == AUDIO_MODE_RINGTONE))) {
 
