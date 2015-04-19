@@ -680,23 +680,20 @@ size_t NuPlayer::Renderer::fillAudioBuffer(void *buffer, size_t size) {
 
 bool NuPlayer::Renderer::onDrainAudioQueue() {
     uint32_t numFramesPlayed;
-    status_t positionStatus = mAudioSink->getPosition(&numFramesPlayed);
-    if (positionStatus == NO_INIT) {
-        // The AudioSink track may not have been created yet, which returns NO_INIT.
-        // Check if EOS has been reached and call notifyEOS, so that this message
-        // is not lost before this funtion returns false below.
-        if (!mAudioQueue.empty()) {
-            QueueEntry *firstEntry = &*mAudioQueue.begin();
-            if (firstEntry->mBuffer == NULL) {
-                // EOS is reached
-                notifyEOS(true /*audio */, firstEntry->mFinalResult);
-                mAudioQueue.erase(mAudioQueue.begin());
+    if(!mAudioSink->ready() && !mAudioQueue.empty()) {
+        while (!mAudioQueue.empty()) {
+            QueueEntry *entry = &*mAudioQueue.begin();
+            if (entry->mBuffer == NULL) {
+                notifyEOS(true /* audio */, entry->mFinalResult);
             }
-            firstEntry = NULL;
-         }
-         return false;
-    } else if (positionStatus != OK) {
-               return false;
+            mAudioQueue.erase(mAudioQueue.begin());
+            entry = NULL;
+        }
+        return false;
+    }
+
+    if (mAudioSink->getPosition(&numFramesPlayed) != OK) {
+        return false;
     }
 
     ssize_t numFramesAvailableToWrite =
