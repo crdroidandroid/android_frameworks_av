@@ -2077,7 +2077,13 @@ status_t OMXCodec::allocateBuffersOnPort(OMX_U32 portIndex) {
             def.nBufferCountActual, def.nBufferSize,
             portIndex == kPortIndexInput ? "input" : "output");
 
+#ifdef MTK_HARDWARE
+    OMX_U32 memoryAlign = 32;
+    size_t totalSize = def.nBufferCountActual *
+        ((def.nBufferSize + (memoryAlign - 1))&(~(memoryAlign - 1)));
+#else
     size_t totalSize = def.nBufferCountActual * def.nBufferSize;
+#endif
     mDealer[portIndex] = new MemoryDealer(totalSize, "OMXCodec");
 
     for (OMX_U32 i = 0; i < def.nBufferCountActual; ++i) {
@@ -2275,10 +2281,18 @@ status_t OMXCodec::allocateOutputBuffersFromNativeWindow() {
         initNativeWindowCrop();
     }
 #elif defined(MTK_HARDWARE)
+    OMX_U32 frameWidth = def.format.video.nFrameWidth;
+    OMX_U32 frameHeight = def.format.video.nFrameHeight;
+
+    if (!strncmp("OMX.MTK.", mComponentName, 8)) {
+        frameWidth = def.format.video.nStride;
+        frameHeight = def.format.video.nSliceHeight;
+    }
+
     err = native_window_set_buffers_geometry(
             mNativeWindow.get(),
-            def.format.video.nStride,
-            def.format.video.nSliceHeight,
+            frameWidth,
+            frameHeight,
             def.format.video.eColorFormat);
 #else
     err = native_window_set_buffers_geometry(
@@ -4759,10 +4773,12 @@ status_t OMXCodec::read(
     }
     *buffer = info->mMediaBuffer;
 
+#ifndef MTK_HARDWARE
     if (info->mOutputCropChanged) {
         initNativeWindowCrop();
         info->mOutputCropChanged = false;
     }
+#endif
 #ifdef DOLBY_UDC
     if (mDolbyProcessedAudioStateChanged) {
         mDolbyProcessedAudioStateChanged = false;
@@ -4993,6 +5009,8 @@ void OMXCodec::initOutputFormat(const sp<MetaData> &inputFormat) {
             mOutputFormat->setInt32(kKeyColorFormat, imageDef->eColorFormat);
             mOutputFormat->setInt32(kKeyWidth, imageDef->nFrameWidth);
             mOutputFormat->setInt32(kKeyHeight, imageDef->nFrameHeight);
+            mOutputFormat->setInt32(kKeyStride, imageDef->nStride);
+            mOutputFormat->setInt32(kKeySliceHeight, imageDef->nSliceHeight);
             break;
         }
 
@@ -5198,9 +5216,12 @@ void OMXCodec::initOutputFormat(const sp<MetaData> &inputFormat) {
                 }
 
                 if (mNativeWindow != NULL) {
+#ifndef MTK_HARDWARE
                      if (mInSmoothStreamingMode) {
                          mOutputCropChanged = true;
-                     } else {
+                     } else
+#endif
+                     {
                          initNativeWindowCrop();
                      }
                 }
