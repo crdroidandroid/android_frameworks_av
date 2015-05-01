@@ -47,9 +47,6 @@
 #include <media/stagefright/MediaDefs.h>
 #include <media/stagefright/MetaData.h>
 #include <media/stagefright/Utils.h>
-#ifdef ENABLE_AV_ENHANCEMENTS
-#include <QCMetaData.h>
-#endif
 
 #include "include/avc_utils.h"
 #include "include/ExtendedUtils.h"
@@ -539,13 +536,6 @@ sp<ABuffer> ElementaryStreamQueue::dequeueAccessUnit() {
                 mFormat = MakeAVCCodecSpecificData(accessUnit);
             } else if (mMode == H265) {
                 mFormat = ExtendedUtils::MakeHEVCCodecSpecificData(accessUnit);
-#ifdef ENABLE_AV_ENHANCEMENTS
-                if (mFormat != NULL) {
-                    // Unlike H264, we do not require HEVC data to be aligned.
-                    // To handle this, let the decoder do the frame parsing.
-                    mFormat->setInt32(kKeyUseArbitraryMode, 1);
-                }
-#endif
             }
         }
 
