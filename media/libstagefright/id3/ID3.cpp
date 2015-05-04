@@ -483,7 +483,7 @@ void ID3::Iterator::getString(String8 *id, String8 *comment) const {
 // comment fields (COM/COMM) contain an initial short descriptor, followed by \0,
 // followed by more data. The data following the \0 can be retrieved by setting
 // "otherdata" to true.
-void ID3::Iterator::getstring(String8 *id, bool otherdata) const {
+void __attribute__((optimize("no-tree-vectorize"))) ID3::Iterator::getstring(String8 *id, bool otherdata) const {
     id->setTo("");
 
     size_t size;
