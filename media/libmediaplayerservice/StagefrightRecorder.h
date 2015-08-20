@@ -257,7 +257,7 @@ private:
     void clipNumberOfAudioChannels();
     void setDefaultProfileIfNecessary();
     void setDefaultVideoEncoderIfNecessary();
-
+    virtual sp<MediaSource> setPCMRecording() {return NULL;}
 
     StagefrightRecorder(const StagefrightRecorder &);
     StagefrightRecorder &operator=(const StagefrightRecorder &);
