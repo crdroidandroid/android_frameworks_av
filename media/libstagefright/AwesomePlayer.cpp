@@ -238,7 +238,7 @@ AwesomePlayer::AwesomePlayer()
 #ifdef MTK_HARDWARE
       mAVSyncTimeUs(-1),
 #endif
-      mIsFirstFrameAfterResume(false) {
+      mIsFirstFrameAfterResume(false){
     CHECK_EQ(mClient.connect(), (status_t)OK);
 
     DataSource::RegisterDefaultSniffers();
