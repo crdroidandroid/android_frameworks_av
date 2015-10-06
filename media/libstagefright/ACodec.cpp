@@ -468,6 +468,7 @@ ACodec::ACodec()
       mSentFormat(false),
       mIsEncoder(false),
       mUseMetadataOnEncoderOutput(false),
+      mFatalError(false),
       mShutdownInProgress(false),
       mExplicitShutdown(false),
       mEncoderDelay(0),
@@ -1085,6 +1086,11 @@ ACodec::BufferInfo *ACodec::dequeueBufferFromNativeWindow() {
     if (mTunneled) {
         ALOGW("dequeueBufferFromNativeWindow() should not be called in tunnel"
               " video playback mode mode!");
+        return NULL;
+    }
+
+    if (mFatalError) {
+        ALOGW("not dequeuing from native window due to fatal error");
         return NULL;
     }
 
@@ -4260,6 +4266,9 @@ void ACodec::signalError(OMX_ERRORTYPE error, status_t internalError) {
             ALOGW("Invalid OMX error %#x", error);
         }
     }
+
+    mFatalError = true;
+
     notify->setInt32("err", internalError);
     notify->setInt32("actionCode", ACTION_CODE_FATAL); // could translate from OMX error.
     notify->post();
