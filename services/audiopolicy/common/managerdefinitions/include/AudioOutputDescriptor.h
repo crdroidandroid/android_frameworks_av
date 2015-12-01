@@ -477,6 +477,11 @@ public:
     audio_io_handle_t getA2dpOutput() const;
 
     /**
+     * return true if primary HAL supports A2DP Playback
+     */
+    bool isA2dpOnPrimary() const;
+
+    /**
      * returns true if primary HAL supports A2DP Offload
      */
     bool isA2dpOffloadedOnPrimary() const;
