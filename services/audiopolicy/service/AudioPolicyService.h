@@ -247,6 +247,7 @@ public:
 
     virtual bool     isHapticPlaybackSupported();
 
+            status_t doStartOutput(audio_port_handle_t portId);
     virtual status_t listAudioProductStrategies(AudioProductStrategyVector &strategies);
     virtual status_t getProductStrategyFromAudioAttributes(const AudioAttributes &aa,
                                                            product_strategy_t &productStrategy);
@@ -434,6 +435,7 @@ private:
             SET_VOLUME,
             SET_PARAMETERS,
             SET_VOICE_VOLUME,
+            START_OUTPUT,
             STOP_OUTPUT,
             RELEASE_OUTPUT,
             CREATE_AUDIO_PATCH,
@@ -463,6 +465,7 @@ private:
                     status_t    parametersCommand(audio_io_handle_t ioHandle,
                                             const char *keyValuePairs, int delayMs = 0);
                     status_t    voiceVolumeCommand(float volume, int delayMs = 0);
+                    status_t    startOutputCommand(audio_port_handle_t portId);
                     void        stopOutputCommand(audio_port_handle_t portId);
                     void        releaseOutputCommand(audio_port_handle_t portId);
                     status_t    sendCommand(sp<AudioCommand>& command, int delayMs = 0);
@@ -538,6 +541,11 @@ private:
         class VoiceVolumeData : public AudioCommandData {
         public:
             float mVolume;
+        };
+
+        class StartOutputData : public AudioCommandData {
+        public:
+            audio_port_handle_t mPortId;
         };
 
         class StopOutputData : public AudioCommandData {

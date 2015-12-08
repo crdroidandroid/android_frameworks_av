@@ -261,6 +261,15 @@ status_t AudioPolicyService::startOutput(audio_port_handle_t portId)
         return NO_INIT;
     }
     ALOGV("startOutput()");
+    return mOutputCommandThread->startOutputCommand(portId);
+}
+
+status_t AudioPolicyService::doStartOutput(audio_port_handle_t portId)
+{
+    if (mAudioPolicyManager == NULL) {
+        return NO_INIT;
+    }
+    ALOGV("doStartOutput()");
     sp<AudioPlaybackClient> client;
     sp<AudioPolicyEffects>audioPolicyEffects;
 
