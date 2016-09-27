@@ -1765,7 +1765,7 @@ AudioFlinger::PlaybackThread::PlaybackThread(const sp<AudioFlinger>& audioFlinge
         mScreenState(AudioFlinger::mScreenState),
         // index 0 is reserved for normal mixer's submix
         mFastTrackAvailMask(((1 << FastMixerState::sMaxFastTracks) - 1) & ~1),
-        mHwSupportsPause(false), mHwPaused(false), mFlushPending(false),
+        mHwSupportsPause(false), mHwPaused(false), mFlushPending(false), mHwSupportsSuspend(false),
         mLeftVolFloat(-1.0), mRightVolFloat(-1.0)
 {
     snprintf(mThreadName, kThreadNameLength, "AudioOut_%X", id);
@@ -2735,6 +2735,20 @@ void AudioFlinger::PlaybackThread::readOutputParameters_l()
         mAudioFlinger->moveEffectChain_l(effectChains[i]->sessionId(),
             this/* srcThread */, this/* dstThread */);
     }
+
+    String8 key("supports_hw_suspend");
+    String8 out_s8;
+    status_t ret;
+    int value = 0;
+    ret = mOutput->stream->getParameters(key, &out_s8);
+    AudioParameter reply(out_s8);
+    if (ret == OK) {
+        mHwSupportsSuspend = (reply.getInt(key, value) == OK && value);
+    } else {
+        mHwSupportsSuspend = false;
+    }
+
+    ALOGV("mHwSupportsSuspend: %d value %d, addr %p", mHwSupportsSuspend, value, &mHwSupportsSuspend);
 }
 
 void AudioFlinger::PlaybackThread::updateMetadata_l()
@@ -3541,6 +3555,9 @@ bool AudioFlinger::PlaybackThread::threadLoop()
             mMixerStatus = prepareTracks_l(&tracksToRemove);
 
             mActiveTracks.updatePowerState(this);
+            if (mMixerStatus == MIXER_IDLE && !mActiveTracks.size()) {
+                onIdleMixer();
+            }
 
             updateMetadata_l();
 
@@ -3850,9 +3867,18 @@ bool AudioFlinger::PlaybackThread::threadLoop()
                     // update sleep time (which is >= 0)
                     mSleepTimeUs = deltaNs / 1000;
                 }
+                if (!mStandby && mHwSupportsSuspend) {
+                    mOutput->stream->setParameters(String8("suspend_playback=true"));
+                }
+
                 if (!mSignalPending && mConfigEvents.isEmpty() && !exitPending()) {
                     mWaitWorkCV.waitRelative(mLock, microseconds((nsecs_t)mSleepTimeUs));
                 }
+
+                if (!mStandby && mHwSupportsSuspend) {
+                    mOutput->stream->setParameters(String8("suspend_playback=false"));
+                }
+
                 ATRACE_END();
             }
         }
@@ -4306,6 +4332,8 @@ AudioFlinger::MixerThread::MixerThread(const sp<AudioFlinger>& audioFlinger, Aud
         mNormalSink = initFastMixer ? mPipeSink : mOutputSink;
         break;
     }
+
+    mIdleTimeOffsetUs = 0;
 }
 
 AudioFlinger::MixerThread::~MixerThread()
@@ -4532,7 +4560,7 @@ void AudioFlinger::MixerThread::threadLoop_sleepTime()
                 }
             }
         } else {
-            mSleepTimeUs = mIdleSleepTimeUs;
+            mSleepTimeUs = mIdleSleepTimeUs + mIdleTimeOffsetUs;
         }
     } else if (mBytesWritten != 0 || (mMixerStatus == MIXER_TRACKS_ENABLED)) {
         // clear out mMixerBuffer or mSinkBuffer, to ensure buffers are cleared
@@ -4546,6 +4574,7 @@ void AudioFlinger::MixerThread::threadLoop_sleepTime()
         ALOGV_IF(mBytesWritten == 0 && (mMixerStatus == MIXER_TRACKS_ENABLED),
                 "anticipated start");
     }
+    mIdleTimeOffsetUs = 0;
     // TODO add standby time extension fct of effect tail
 }
 
@@ -5564,6 +5593,12 @@ void AudioFlinger::DirectOutputThread::processVolume_l(Track *track, bool lastTr
             }
         }
     }
+
+}
+
+void AudioFlinger::PlaybackThread::onIdleMixer()
+{
+    ALOGV("onIdleMixer");
 }
 
 void AudioFlinger::DirectOutputThread::onAddNewTrack_l()
@@ -6456,6 +6491,36 @@ void AudioFlinger::OffloadThread::invalidateTracks(audio_stream_type_t streamTyp
     Mutex::Autolock _l(mLock);
     if (PlaybackThread::invalidateTracks_l(streamType)) {
         mFlushPending = true;
+    }
+}
+
+void AudioFlinger::MixerThread::onIdleMixer()
+{
+    PlaybackThread::onIdleMixer();
+
+    if (mFastMixer == 0) {
+        return;
+    }
+
+    if (!mHwSupportsSuspend) {
+        return;
+    }
+
+    if (mStandbyDelayNs > seconds(1)) {
+        mIdleTimeOffsetUs = seconds(1)/1000LL - mIdleSleepTimeUs;
+    }
+
+    FastMixerStateQueue *sq = mFastMixer->sq();
+    FastMixerState *state = sq->begin();
+    if (!(state->mCommand & FastMixerState::IDLE)) {
+        state->mCommand = FastMixerState::COLD_IDLE;
+        state->mColdFutexAddr = &mFastMixerFutex;
+        state->mColdGen++;
+        mFastMixerFutex = 0;
+        sq->end();
+        sq->push(FastMixerStateQueue::BLOCK_UNTIL_ACKED);
+    } else {
+        sq->end(false /*didModify*/);
     }
 }
 
