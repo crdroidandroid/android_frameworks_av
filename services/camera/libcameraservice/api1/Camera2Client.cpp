@@ -879,6 +879,7 @@ void Camera2Client::stopPreview() {
     Mutex::Autolock icl(mBinderSerializationLock);
     status_t res;
     if ( (res = checkPid(__FUNCTION__) ) != OK) return;
+    if (mDevice == 0) return;
     stopPreviewL();
 }
 
