@@ -429,6 +429,14 @@ status_t LiveSession::dequeueAccessUnit(
             } else {
                 mDiscontinuityAbsStartTimesUs.add(strm.mCurDiscontinuitySeq, timeUs);
                 firstTimeUs = timeUs;
+                // we have adjusted a/v both start from last preceding IDR position, it's always
+                // before original seek position, so we need to adjust mLastSeekTimeUs to the
+                // actual start position
+                int64_t newSeekTimeUs = -1;
+                if ((*accessUnit)->meta()->findInt64("newSeekTimeUs", &newSeekTimeUs)
+                        && newSeekTimeUs != -1) {
+                    mLastSeekTimeUs = newSeekTimeUs;
+                }
             }
 
             strm.mLastDequeuedTimeUs = timeUs;
