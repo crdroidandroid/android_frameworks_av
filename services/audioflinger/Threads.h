@@ -941,6 +941,7 @@ private:
                 // accessible only within the threadLoop(), no locks required
                 //          mFastMixer->sq()    // for mutating and pushing state
                 int32_t     mFastMixerFutex;    // for cold idle
+                bool        mFastMixerIdlePending;
 
                 std::atomic_bool mMasterMono;
 public:

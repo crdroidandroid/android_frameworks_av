@@ -335,7 +335,8 @@ void FastMixer::onWork()
     const FastMixerState::Command command = mCommand;
     const size_t frameCount = current->mFrameCount;
 
-    if ((command & FastMixerState::MIX) && (mMixer != NULL) && mIsWarm) {
+    if ((command & FastMixerState::MIX) && (mMixer != NULL) &&
+            (mIsWarm || command == FastMixerState::MIX)) {
         ALOG_ASSERT(mMixerBuffer != NULL);
 
         // AudioMixer::mState.enabledTracks is undefined if mState.hook == process__validate,
@@ -423,6 +424,11 @@ void FastMixer::onWork()
             mMixerBufferState = UNDEFINED;
         }
 
+        // if mixerthread is suspended, simulate the write with period time sleep
+        if (command == FastMixerState::MIX) {
+            const struct timespec req = {0, mPeriodNs};
+            nanosleep(&req, NULL);
+        }
     } else if (mMixerBufferState == MIXED) {
         mMixerBufferState = UNDEFINED;
     }
