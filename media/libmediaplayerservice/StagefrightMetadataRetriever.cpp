@@ -353,6 +353,10 @@ sp<IMemory> StagefrightMetadataRetriever::getFrameInternal(
             continue;
         }
 
+        if (meta == NULL) {
+            continue;
+        }
+
         const char *mime;
         if (meta->findCString(kKeyMIMEType, &mime) && !strncasecmp(mime, "video/", 6)) {
             break;
@@ -615,6 +619,10 @@ void StagefrightMetadataRetriever::parseMetaData() {
     for (size_t i = 0; i < numTracks; ++i) {
         sp<MetaData> trackMeta = mExtractor->getTrackMetaData(i);
         if (!trackMeta) {
+            continue;
+        }
+
+        if (trackMeta == NULL) {
             continue;
         }
 
