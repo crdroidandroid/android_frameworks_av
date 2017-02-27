@@ -847,12 +847,12 @@ size_t NuPlayer::Renderer::fillAudioBuffer(void *buffer, size_t size) {
 
     if (mAudioFirstAnchorTimeMediaUs >= 0) {
         int64_t nowUs = ALooper::GetNowUs();
-        int64_t nowMediaUs = 0;
+        int64_t nowMediaUs = -1;
         int64_t playedDuration = mAudioSink->getPlayedOutDurationUs(nowUs);
         if (playedDuration >= 0) {
             nowMediaUs = mAudioFirstAnchorTimeMediaUs + playedDuration;
         } else {
-            getCurrentPosition(&nowMediaUs);
+            mMediaClock->getMediaTime(nowUs, &nowMediaUs);
         }
         // we don't know how much data we are queueing for offloaded tracks.
         mMediaClock->updateAnchor(nowMediaUs, nowUs, INT64_MAX);
