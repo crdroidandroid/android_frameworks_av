@@ -4372,7 +4372,9 @@ void AudioPolicyManager::checkOutputForAllStrategies()
 void AudioPolicyManager::checkA2dpSuspend()
 {
     audio_io_handle_t a2dpOutput = mOutputs.getA2dpOutput();
-    if (a2dpOutput == 0 || mOutputs.isA2dpOnPrimary()) {
+    bool a2dpOnPrimary = mOutputs.isA2dpOnPrimary();
+
+    if ((a2dpOutput == 0) && !a2dpOnPrimary) {
         mA2dpSuspended = false;
         return;
     }
@@ -4385,13 +4387,15 @@ void AudioPolicyManager::checkA2dpSuspend()
     //      (NOT already suspended) &&
     //      ((SCO device is connected &&
     //       (forced usage for communication || for record is SCO))) ||
-    //      (phone state is ringing || in call)
+    //      (phone state is ringing || in call) &&
+    //      (A2DP output is present and not on primary output)
     //
     // restore A2DP output if:
     //      (Already suspended) &&
     //      ((SCO device is NOT connected ||
     //       (forced usage NOT for communication && NOT for record is SCO))) &&
-    //      (phone state is NOT ringing && NOT in call)
+    //      (phone state is NOT ringing && NOT in call) &&
+    //      (A2DP output is present and not on primary output)
     //
     if (mA2dpSuspended) {
         if ((!isScoConnected ||
@@ -4400,7 +4404,9 @@ void AudioPolicyManager::checkA2dpSuspend()
              ((mEngine->getPhoneState() != AUDIO_MODE_IN_CALL) &&
               (mEngine->getPhoneState() != AUDIO_MODE_RINGTONE))) {
 
-            mpClientInterface->restoreOutput(a2dpOutput);
+            if ((a2dpOutput != 0) && !a2dpOnPrimary) {
+                mpClientInterface->restoreOutput(a2dpOutput);
+            }
             mA2dpSuspended = false;
         }
     } else {
@@ -4410,7 +4416,9 @@ void AudioPolicyManager::checkA2dpSuspend()
              ((mEngine->getPhoneState() == AUDIO_MODE_IN_CALL) ||
               (mEngine->getPhoneState() == AUDIO_MODE_RINGTONE))) {
 
-            mpClientInterface->suspendOutput(a2dpOutput);
+            if ((a2dpOutput != 0) && !a2dpOnPrimary) {
+                mpClientInterface->suspendOutput(a2dpOutput);
+            }
             mA2dpSuspended = true;
         }
     }
