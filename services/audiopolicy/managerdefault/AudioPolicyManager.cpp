@@ -4408,6 +4408,18 @@ void AudioPolicyManager::checkA2dpSuspend()
                 mpClientInterface->restoreOutput(a2dpOutput);
             }
             mA2dpSuspended = false;
+            // if a2dp on primary, unmute the strategies which may be mute during a2dp suspend
+            if (a2dpOnPrimary) {
+                for (int i = 0; i < NUM_STRATEGIES; i++) {
+                    for (size_t j = 0; j < mOutputs.size(); j++) {
+                        sp<AudioOutputDescriptor> desc = mOutputs.valueAt(j);
+                        if (desc->mStrategyMutedByA2dpSuspended[i]) {
+                            setStrategyMute((routing_strategy)i, false, desc, 0,
+                                               getDeviceForStrategy((routing_strategy)i, false /*fromCache*/));
+                        }
+                    }
+                }
+            }
         }
     } else {
         if ((isScoConnected &&
@@ -4418,6 +4430,36 @@ void AudioPolicyManager::checkA2dpSuspend()
 
             if ((a2dpOutput != 0) && !a2dpOnPrimary) {
                 mpClientInterface->suspendOutput(a2dpOutput);
+            }
+            // if a2dp on primay, need to mute the strategies which device is a2dp when suspended
+            if (a2dpOnPrimary) {
+                uint32_t muteWaitMs = 0;
+                for (int i = 0; i < NUM_STRATEGIES; i++) {
+                    audio_devices_t curDevice = getDeviceForStrategy((routing_strategy)i, false /*fromCache*/);
+                    bool mute = (popcount(curDevice) == 1) && (curDevice & AUDIO_DEVICE_OUT_ALL_A2DP);
+                    for (size_t j = 0; j < mOutputs.size(); j++) {
+                        sp<AudioOutputDescriptor> desc = mOutputs.valueAt(j);
+                        // skip output if it does not share any device with a2dp devices
+                        if ((desc->supportedDevices() & AUDIO_DEVICE_OUT_ALL_A2DP)
+                               == AUDIO_DEVICE_NONE) {
+                            continue;
+                        }
+                        if (mute) {
+                            desc->mStrategyMutedByA2dpSuspended[i] = true;
+                            setStrategyMute((routing_strategy)i, mute, desc);
+                            if (isStrategyActive(desc, (routing_strategy)i)) {
+                                // as explained in checkDeviceMuteStrategy(), the mute time should
+                                // be set to account for the delay between now and the next time the
+                                // audioflinger thread for this output will process a buffer, and
+                                // long enough to wait for PCM with previous volume applied empty.
+                                if (muteWaitMs < desc->latency()) {
+                                    muteWaitMs = desc->latency();
+                                }
+                            }
+                        }
+                    }
+                }
+                usleep(muteWaitMs * 1000);
             }
             mA2dpSuspended = true;
         }

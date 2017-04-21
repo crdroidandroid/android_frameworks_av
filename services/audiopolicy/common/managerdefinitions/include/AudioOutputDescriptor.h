@@ -83,6 +83,8 @@ public:
     int mMuteCount[AUDIO_STREAM_CNT];     // mute request counter
     bool mStrategyMutedByDevice[NUM_STRATEGIES]; // strategies muted because of incompatible
                                         // device selection. See checkDeviceMuteStrategies()
+    bool mStrategyMutedByA2dpSuspended[NUM_STRATEGIES]; // strategies muted because of a2dp
+                                        // suspended but selected device is still a2dp
     AudioPolicyClientInterface *mClientInterface;
 
 protected:
