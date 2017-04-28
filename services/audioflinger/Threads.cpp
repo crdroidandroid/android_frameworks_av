@@ -3694,6 +3694,8 @@ status_t AudioFlinger::PlaybackThread::releaseAudioPatch_l(const audio_patch_han
         status = mOutput->stream->common.set_parameters(&mOutput->stream->common,
                 param.toString().string());
     }
+    sendIoConfigEvent_l(AUDIO_OUTPUT_CONFIG_CHANGED);
+    mPrevOutDevice = mOutDevice;
     return status;
 }
 
