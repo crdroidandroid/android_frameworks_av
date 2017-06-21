@@ -98,7 +98,7 @@ binder::Status createSurfaceFromGbp(
         sp<Surface>& surface, const sp<IGraphicBufferProducer>& gbp,
         const String8 &logicalCameraId, const CameraMetadata &physicalCameraMetadata,
         const std::vector<int32_t> &sensorPixelModesUsed,  int64_t dynamicRangeProfile,
-        int64_t streamUseCase, int timestampBase, int mirrorMode);
+        int64_t streamUseCase, int timestampBase, int mirrorMode, bool isPriviledgedClient=false);
 
 //check if format is 10-bit output compatible
 bool is10bitCompatibleFormat(int32_t format);
@@ -133,7 +133,7 @@ convertToHALStreamCombination(
     const String8 &logicalCameraId, const CameraMetadata &deviceInfo,
     metadataGetter getMetadata, const std::vector<std::string> &physicalCameraIds,
     aidl::android::hardware::camera::device::StreamConfiguration &streamConfiguration,
-    bool overrideForPerfClass, bool *earlyExit);
+    bool overrideForPerfClass, bool *earlyExit, bool isPrivilegedClient = false);
 
 StreamConfigurationPair getStreamConfigurationPair(const CameraMetadata &metadata);
 
