@@ -25,6 +25,7 @@ namespace android {
 // Keep in sync with frameworks/base/core/java/android/os/ISchedulingPolicyService.aidl
 enum {
     REQUEST_PRIORITY_TRANSACTION = IBinder::FIRST_CALL_TRANSACTION,
+    REQUEST_PRIORITY_DL_TRANSACTION = IBinder::FIRST_CALL_TRANSACTION + 1,
 };
 
 // ----------------------------------------------------------------------
@@ -48,6 +49,33 @@ public:
         data.writeBool(isForApp);
         uint32_t flags = asynchronous ? IBinder::FLAG_ONEWAY : 0;
         status_t status = remote()->transact(REQUEST_PRIORITY_TRANSACTION, data, &reply, flags);
+        if (status != NO_ERROR) {
+            return status;
+        }
+        if (asynchronous) {
+            return NO_ERROR;
+        }
+        // fail on exception: force binder reconnection
+        if (reply.readExceptionCode() != 0) {
+            return DEAD_OBJECT;
+        }
+        return reply.readInt32();
+    }
+
+    virtual int requestPriorityDL(int32_t pid, int32_t tid,
+                                  uint64_t runtime, uint64_t deadline, uint64_t period,
+                                  bool isForApp, bool asynchronous)
+    {
+        Parcel data, reply;
+        data.writeInterfaceToken(ISchedulingPolicyService::getInterfaceDescriptor());
+        data.writeInt32(pid);
+        data.writeInt32(tid);
+        data.writeInt64(runtime);
+        data.writeInt64(deadline);
+        data.writeInt64(period);
+        data.writeBool(isForApp);
+        uint32_t flags = asynchronous ? IBinder::FLAG_ONEWAY : 0;
+        status_t status = remote()->transact(REQUEST_PRIORITY_DL_TRANSACTION, data, &reply, flags);
         if (status != NO_ERROR) {
             return status;
         }

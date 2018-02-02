@@ -25,6 +25,9 @@ namespace android {
 // after the request is enqueued but not necessarily executed.
 // The default value 'false' means to return after request has been enqueued and executed.
 int requestPriority(pid_t pid, pid_t tid, int32_t prio, bool isForApp, bool asynchronous = false);
+int requestPriorityDL(pid_t pid, pid_t tid,
+                      uint64_t runtime, uint64_t deadline, uint64_t period,
+                      bool isForApp, bool asynchronous = false);
 
 }   // namespace android
 

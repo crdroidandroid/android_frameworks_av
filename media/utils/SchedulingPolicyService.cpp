@@ -59,4 +59,37 @@ int requestPriority(pid_t pid, pid_t tid, int32_t prio, bool isForApp, bool asyn
     return ret;
 }
 
+int requestPriorityDL(pid_t pid, pid_t tid,
+                      uint64_t runtime, uint64_t deadline, uint64_t period,
+                      bool isForApp, bool asynchronous)
+{
+    int ret;
+
+    for (;;) {
+        sMutex.lock();
+        sp<ISchedulingPolicyService> sps = sSchedulingPolicyService;
+        sMutex.unlock();
+        if (sps == 0) {
+            sp<IBinder> binder = defaultServiceManager()->checkService(_scheduling_policy);
+            if (binder == 0) {
+                sleep(1);
+                continue;
+            }
+            sps = interface_cast<ISchedulingPolicyService>(binder);
+            sMutex.lock();
+            sSchedulingPolicyService = sps;
+            sMutex.unlock();
+        }
+        ret = sps->requestPriorityDL(pid, tid, runtime, deadline, period, isForApp, asynchronous);
+        if (ret != DEAD_OBJECT)
+            break;
+
+        ALOGW("SchedulingPolicyService died");
+        sMutex.lock();
+        sSchedulingPolicyService.clear();
+        sMutex.unlock();
+    }
+    return ret;
+}
+
 }   // namespace android

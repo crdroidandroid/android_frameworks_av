@@ -28,6 +28,9 @@ public:
 
     virtual int         requestPriority(/*pid_t*/int32_t pid, /*pid_t*/int32_t tid,
                                         int32_t prio, bool isForApp, bool asynchronous) = 0;
+    virtual int         requestPriorityDL(/*pid_t*/int32_t pid, /*pid_t*/int32_t tid,
+                                        uint64_t runtime, uint64_t deadline, uint64_t period,
+                                        bool isForApp, bool asynchronous) = 0;
 
 };
 
