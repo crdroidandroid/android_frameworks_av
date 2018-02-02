@@ -255,8 +255,14 @@ aaudio_result_t AAudioService::registerAudioThread(aaudio_handle_t streamHandle,
 
     const pid_t ownerPid = IPCThreadState::self()->getCallingPid(); // TODO review
     serviceStream->setRegisteredThread(clientThreadId);
-    int err = android::requestPriority(ownerPid, clientThreadId,
-                                       DEFAULT_AUDIO_PRIORITY, true /* isForApp */);
+
+    uint64_t runtime =         500 * 1000ull;
+    uint64_t deadline = 2.5 * 1000 * 1000ull;
+    uint64_t period =   2.5 * 1000 * 1000ull;
+
+    int err = android::requestPriorityDL(ownerPid, clientThreadId,
+                                         runtime, deadline, period,
+                                         true /* isForApp */);
     if (err != 0){
         ALOGE("AAudioService::registerAudioThread(%d) failed, errno = %d, priority = %d",
               clientThreadId, errno, DEFAULT_AUDIO_PRIORITY);
