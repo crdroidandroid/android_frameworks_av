@@ -811,7 +811,7 @@ bool GraphicBufferSource::calculateCodecTimestamp_l(
 
     if (mCaptureFps > 0.
             && (mFps > 2 * mCaptureFps
-            || mCaptureFps > 2 * mFps)) {
+            || mCaptureFps > mFps)) {
         // Time lapse or slow motion mode
         if (mPrevCaptureUs < 0LL) {
             // first capture
