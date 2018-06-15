@@ -63,14 +63,14 @@ status_t StagefrightMetadataRetriever::setDataSource(
     mSource = DataSourceFactory::CreateFromURI(httpService, uri, headers);
 
     if (mSource == NULL) {
-        ALOGE("Unable to create data source for '%s'.", uri);
+        ALOGE("Unable to create data source");
         return UNKNOWN_ERROR;
     }
 
     mExtractor = MediaExtractorFactory::Create(mSource);
 
     if (mExtractor == NULL) {
-        ALOGE("Unable to instantiate an extractor for '%s'.", uri);
+        ALOGE("Unable to instantiate an extractor");
 
         mSource.clear();
 
