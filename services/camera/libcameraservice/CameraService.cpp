@@ -24,6 +24,10 @@
 #include <cstring>
 #include <ctime>
 #include <string>
+#ifdef TARGET_NEEDS_CLIENT_INFO
+#include <iostream>
+#include <fstream>
+#endif
 #include <sys/types.h>
 #include <inttypes.h>
 #include <pthread.h>
@@ -2537,6 +2541,11 @@ status_t CameraService::BasicClient::startCameraOps() {
 
     sCameraService->mUidPolicy->registerMonitorUid(mClientUid);
 
+#ifdef TARGET_NEEDS_CLIENT_INFO
+    std::ofstream cpf("/data/vendor/lineage/client_package_name");
+    std::string cpn = String8(mClientPackageName).string();
+    cpf << cpn;
+#endif
     return OK;
 }
 
