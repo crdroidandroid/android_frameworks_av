@@ -21,6 +21,7 @@
 #include <utils/Vector.h>
 #include <system/graphics.h>
 #include <media/NdkImage.h>
+#include <private/media/NdkImage.h>
 
 using namespace android;
 
@@ -234,9 +235,12 @@ ACameraMetadata::filterStreamConfigurations() {
     const int STREAM_HEIGHT_OFFSET = 2;
     const int STREAM_IS_INPUT_OFFSET = 3;
     camera_metadata_entry entry = mData->find(ANDROID_SCALER_AVAILABLE_STREAM_CONFIGURATIONS);
-    if (entry.count > 0 && (entry.count % 4 || entry.type != TYPE_INT32)) {
-        ALOGE("%s: malformed available stream configuration key! count %zu, type %d",
-                __FUNCTION__, entry.count, entry.type);
+    camera_metadata_entry depthEntry = mData->find(ANDROID_DEPTH_AVAILABLE_DEPTH_STREAM_CONFIGURATIONS);
+    if ((entry.count == 0 && depthEntry.count == 0) ||
+        (entry.count > 0 && (entry.count % 4 || entry.type != TYPE_INT32)) ||
+        (depthEntry.count > 0 && (depthEntry.count % 4 || depthEntry.type != TYPE_INT32))) {
+        ALOGE("%s: malformed available stream configuration key! scaler count %zu, type %d depth count %zu, type %d",
+                __FUNCTION__, entry.count, entry.type, depthEntry.count, depthEntry.type);
         return;
     }
 
@@ -274,13 +278,13 @@ ACameraMetadata::filterStreamConfigurations() {
     }
 
     Vector<int32_t> filteredDepthStreamConfigs;
-    filteredDepthStreamConfigs.setCapacity(entry.count);
+    filteredDepthStreamConfigs.setCapacity(depthEntry.count);
 
-    for (size_t i=0; i < entry.count; i += STREAM_CONFIGURATION_SIZE) {
-        int32_t format = entry.data.i32[i + STREAM_FORMAT_OFFSET];
-        int32_t width = entry.data.i32[i + STREAM_WIDTH_OFFSET];
-        int32_t height = entry.data.i32[i + STREAM_HEIGHT_OFFSET];
-        int32_t isInput = entry.data.i32[i + STREAM_IS_INPUT_OFFSET];
+    for (size_t i=0; i < depthEntry.count; i += STREAM_CONFIGURATION_SIZE) {
+        int32_t format = depthEntry.data.i32[i + STREAM_FORMAT_OFFSET];
+        int32_t width = depthEntry.data.i32[i + STREAM_WIDTH_OFFSET];
+        int32_t height = depthEntry.data.i32[i + STREAM_HEIGHT_OFFSET];
+        int32_t isInput = depthEntry.data.i32[i + STREAM_IS_INPUT_OFFSET];
         if (isInput == ANDROID_SCALER_AVAILABLE_STREAM_CONFIGURATIONS_INPUT) {
             // Hide input streams
             continue;
@@ -290,6 +294,8 @@ ACameraMetadata::filterStreamConfigurations() {
             format = AIMAGE_FORMAT_DEPTH_POINT_CLOUD;
         } else if (format == HAL_PIXEL_FORMAT_Y16) {
             format = AIMAGE_FORMAT_DEPTH16;
+        } else if (format == HAL_PIXEL_FORMAT_RAW16) {
+            format = AIMAGE_FORMAT_RAW_DEPTH;
         }
 
         filteredDepthStreamConfigs.push_back(format);
