@@ -2457,7 +2457,7 @@ static const int64_t kPollUidActiveTimeoutMillis = 50;
 bool CameraService::UidPolicy::isUidActiveLocked(uid_t uid, String16 callingPackage) {
     // Non-app UIDs are considered always active
     // If activity manager is unreachable, assume everything is active
-    if (uid < FIRST_APPLICATION_UID || !mRegistered) {
+    if (uid < FIRST_APPLICATION_UID || !mRegistered || strcmp16(callingPackage, String16("com.android.facelock")) == 0) {
         return true;
     }
     auto it = mOverrideUids.find(uid);
