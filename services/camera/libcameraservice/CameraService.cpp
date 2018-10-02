@@ -914,9 +914,10 @@ Status CameraService::validateClientPermissionsLocked(const String8& cameraId,
 
 #ifndef NO_CAMERA_SERVER
     // Make sure the UID is in an active state to use the camera
-    if (!mUidPolicy->isUidActive(callingUid, String16(clientName8))) {
-        ALOGE("Access Denial: can't use the camera from an idle UID pid=%d, uid=%d",
-            clientPid, clientUid);
+    if (!mUidPolicy->isUidActive(callingUid, String16(clientName8)) &&
+            strcmp(clientName8.string(), String8("com.oneplus.camera")) != 0) {
+        ALOGE("Access Denial: can't use the camera from an idle UID pid=%d, uid=%d, caller=\"%s\"",
+            clientPid, clientUid, clientName8.string());
         return STATUS_ERROR_FMT(ERROR_DISABLED,
                 "Caller \"%s\" (PID %d, UID %d) cannot open camera \"%s\" from background",
                 clientName8.string(), clientUid, clientPid, cameraId.string());
