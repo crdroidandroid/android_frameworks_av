@@ -676,7 +676,8 @@ status_t CameraClient::takePicture(int msgType) {
                            CAMERA_MSG_POSTVIEW_FRAME |
                            CAMERA_MSG_RAW_IMAGE |
                            CAMERA_MSG_RAW_IMAGE_NOTIFY |
-                           CAMERA_MSG_COMPRESSED_IMAGE);
+                           CAMERA_MSG_COMPRESSED_IMAGE |
+                           0x40000|0x80000|0x100000|0x120000);
 
     enableMsgType(picMsgType);
     mBurstCnt = mHardware->getParameters().getInt("num-snaps-per-shutter");
