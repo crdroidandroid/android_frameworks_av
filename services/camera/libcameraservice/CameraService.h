@@ -177,10 +177,10 @@ public:
         NUM_SOUNDS
     };
 
-    void                loadSound();
+    void                loadSound(sound_kind kind);
     void                playSound(sound_kind kind);
     void                releaseSound();
-
+    void                increaseSoundRef();
     /**
      * Update the state of a given camera device (open/close/active/idle) with
      * the camera proxy service in the system service
