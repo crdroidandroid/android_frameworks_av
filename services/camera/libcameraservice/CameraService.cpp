@@ -2285,12 +2285,12 @@ status_t CameraService::BasicClient::startCameraOps() {
             mCameraIdStr, mCameraFacing, mClientPackageName, apiLevel);
 
 #ifdef TARGET_NEEDS_CLIENT_INFO
-    std::ofstream cpf("/data/misc/camera/client_package_name");
+    std::ofstream cpf("/data/vendor/crdroid/client_package_name");
     std::string cpn = String8(mClientPackageName).string();
     if (cpn.compare("com.oneplus.camera") == 0) {
         cpf << "com.oneplus.camera";
     } else {
-        cpf << "";
+        cpf << "0";
     }
 #endif
     return OK;
