@@ -1906,6 +1906,10 @@ void AudioFlinger::EffectChain::clearInputBuffer()
         return;
     }
     clearInputBuffer_l(thread);
+
+    for (size_t i = 0; i < mEffects.size(); i++) {
+        mEffects[i]->reset_l();
+    }
 }
 
 // Must be called with EffectChain::mLock locked
