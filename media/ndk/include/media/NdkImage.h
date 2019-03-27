@@ -534,7 +534,24 @@ enum AIMAGE_FORMATS {
      * (in bytes) between adjacent rows.</p>
      *
      */
-    AIMAGE_FORMAT_Y8 = 0x20203859
+    AIMAGE_FORMAT_Y8 = 0x20203859,
+
+    /**
+     * Compressed HEIC format.
+     *
+     * <p>This format defines the HEIC brand of High Efficiency Image File
+     * Format as described in ISO/IEC 23008-12.</p>
+     */
+    AIMAGE_FORMAT_HEIC = 0x48454946,
+
+    /**
+     * Depth augmented compressed JPEG format.
+     *
+     * <p>JPEG compressed main image along with XMP embedded depth metadata
+     * following ISO 16684-1:2011(E).</p>
+     */
+    AIMAGE_FORMAT_DEPTH_JPEG = 0x69656963,
+
 };
 
 /**

@@ -448,14 +448,13 @@ struct CCodec::ClientListener : public Codec2Client::Listener {
 
     virtual void onWorkDone(
             const std::weak_ptr<Codec2Client::Component>& component,
-            std::list<std::unique_ptr<C2Work>>& workItems,
-            size_t numDiscardedInputBuffers) override {
+            std::list<std::unique_ptr<C2Work>>& workItems) override {
         (void)component;
         sp<CCodec> codec(mCodec.promote());
         if (!codec) {
             return;
         }
-        codec->onWorkDone(workItems, numDiscardedInputBuffers);
+        codec->onWorkDone(workItems);
     }
 
     virtual void onTripped(
@@ -504,10 +503,10 @@ struct CCodec::ClientListener : public Codec2Client::Listener {
     }
 
     virtual void onInputBufferDone(
-            const std::shared_ptr<C2Buffer>& buffer) override {
+            uint64_t frameIndex, size_t arrayIndex) override {
         sp<CCodec> codec(mCodec.promote());
         if (codec) {
-            codec->onInputBufferDone(buffer);
+            codec->onInputBufferDone(frameIndex, arrayIndex);
         }
     }
 
@@ -531,10 +530,6 @@ public:
                 {RenderedFrameInfo(mediaTimeUs, renderTimeNs)});
     }
 
-    void onWorkQueued(bool eos) override {
-        mCodec->onWorkQueued(eos);
-    }
-
     void onOutputBuffersChanged() override {
         mCodec->mCallback->onOutputBuffersChanged();
     }
@@ -546,8 +541,7 @@ private:
 // CCodec
 
 CCodec::CCodec()
-    : mChannel(new CCodecBufferChannel(std::make_shared<CCodecCallbackImpl>(this))),
-      mQueuedWorkCount(0) {
+    : mChannel(new CCodecBufferChannel(std::make_shared<CCodecCallbackImpl>(this))) {
 }
 
 CCodec::~CCodec() {
@@ -715,6 +709,49 @@ void CCodec::configure(const sp<AMessage> &msg) {
         Mutexed<Config>::Locked config(mConfig);
         config->mUsingSurface = surface != nullptr;
 
+        // Enforce required parameters
+        int32_t i32;
+        float flt;
+        if (config->mDomain & Config::IS_AUDIO) {
+            if (!msg->findInt32(KEY_SAMPLE_RATE, &i32)) {
+                ALOGD("sample rate is missing, which is required for audio components.");
+                return BAD_VALUE;
+            }
+            if (!msg->findInt32(KEY_CHANNEL_COUNT, &i32)) {
+                ALOGD("channel count is missing, which is required for audio components.");
+                return BAD_VALUE;
+            }
+            if ((config->mDomain & Config::IS_ENCODER)
+                    && !mime.equalsIgnoreCase(MEDIA_MIMETYPE_AUDIO_FLAC)
+                    && !msg->findInt32(KEY_BIT_RATE, &i32)
+                    && !msg->findFloat(KEY_BIT_RATE, &flt)) {
+                ALOGD("bitrate is missing, which is required for audio encoders.");
+                return BAD_VALUE;
+            }
+        }
+        if (config->mDomain & (Config::IS_IMAGE | Config::IS_VIDEO)) {
+            if (!msg->findInt32(KEY_WIDTH, &i32)) {
+                ALOGD("width is missing, which is required for image/video components.");
+                return BAD_VALUE;
+            }
+            if (!msg->findInt32(KEY_HEIGHT, &i32)) {
+                ALOGD("height is missing, which is required for image/video components.");
+                return BAD_VALUE;
+            }
+            if ((config->mDomain & Config::IS_ENCODER) && (config->mDomain & Config::IS_VIDEO)) {
+                if (!msg->findInt32(KEY_BIT_RATE, &i32)
+                        && !msg->findFloat(KEY_BIT_RATE, &flt)) {
+                    ALOGD("bitrate is missing, which is required for video encoders.");
+                    return BAD_VALUE;
+                }
+                if (!msg->findInt32(KEY_I_FRAME_INTERVAL, &i32)
+                        && !msg->findFloat(KEY_I_FRAME_INTERVAL, &flt)) {
+                    ALOGD("I frame interval is missing, which is required for video encoders.");
+                    return BAD_VALUE;
+                }
+            }
+        }
+
         /*
          * Handle input surface configuration
          */
@@ -724,13 +761,14 @@ void CCodec::configure(const sp<AMessage> &msg) {
             {
                 config->mISConfig->mMinFps = 0;
                 int64_t value;
-                if (msg->findInt64("repeat-previous-frame-after", &value) && value > 0) {
+                if (msg->findInt64(KEY_REPEAT_PREVIOUS_FRAME_AFTER, &value) && value > 0) {
                     config->mISConfig->mMinFps = 1e6 / value;
                 }
-                (void)msg->findFloat("max-fps-to-encoder", &config->mISConfig->mMaxFps);
+                (void)msg->findFloat(
+                        KEY_MAX_FPS_TO_ENCODER, &config->mISConfig->mMaxFps);
                 config->mISConfig->mMinAdjustedFps = 0;
                 config->mISConfig->mFixedAdjustedFps = 0;
-                if (msg->findInt64("max-pts-gap-to-encoder", &value)) {
+                if (msg->findInt64(KEY_MAX_PTS_GAP_TO_ENCODER, &value)) {
                     if (value < 0 && value >= INT32_MIN) {
                         config->mISConfig->mFixedAdjustedFps = -1e6 / value;
                     } else if (value > 0 && value <= INT32_MAX) {
@@ -751,7 +789,7 @@ void CCodec::configure(const sp<AMessage> &msg) {
                 config->mISConfig->mSuspended = false;
                 config->mISConfig->mSuspendAtUs = -1;
                 int32_t value;
-                if (msg->findInt32("create-input-buffers-suspended", &value) && value) {
+                if (msg->findInt32(KEY_CREATE_INPUT_SURFACE_SUSPENDED, &value) && value) {
                     config->mISConfig->mSuspended = true;
                 }
             }
@@ -778,8 +816,16 @@ void CCodec::configure(const sp<AMessage> &msg) {
         }
 
         std::vector<std::unique_ptr<C2Param>> configUpdate;
+        // NOTE: We used to ignore "video-bitrate" at configure; replicate
+        //       the behavior here.
+        sp<AMessage> sdkParams = msg;
+        int32_t videoBitrate;
+        if (sdkParams->findInt32(PARAMETER_KEY_VIDEO_BITRATE, &videoBitrate)) {
+            sdkParams = msg->dup();
+            sdkParams->removeEntryAt(sdkParams->findEntryByName(PARAMETER_KEY_VIDEO_BITRATE));
+        }
         status_t err = config->getConfigUpdateFromSdkParams(
-                comp, msg, Config::IS_CONFIG, C2_DONT_BLOCK, &configUpdate);
+                comp, sdkParams, Config::IS_CONFIG, C2_DONT_BLOCK, &configUpdate);
         if (err != OK) {
             ALOGW("failed to convert configuration to c2 params");
         }
@@ -943,6 +989,47 @@ void CCodec::initiateCreateInputSurface() {
     (new AMessage(kWhatCreateInputSurface, this))->post();
 }
 
+sp<PersistentSurface> CCodec::CreateOmxInputSurface() {
+    using namespace android::hardware::media::omx::V1_0;
+    using namespace android::hardware::media::omx::V1_0::utils;
+    using namespace android::hardware::graphics::bufferqueue::V1_0::utils;
+    typedef android::hardware::media::omx::V1_0::Status OmxStatus;
+    android::sp<IOmx> omx = IOmx::getService();
+    typedef android::hardware::graphics::bufferqueue::V1_0::
+            IGraphicBufferProducer HGraphicBufferProducer;
+    typedef android::hardware::media::omx::V1_0::
+            IGraphicBufferSource HGraphicBufferSource;
+    OmxStatus s;
+    android::sp<HGraphicBufferProducer> gbp;
+    android::sp<HGraphicBufferSource> gbs;
+    android::Return<void> transStatus = omx->createInputSurface(
+            [&s, &gbp, &gbs](
+                    OmxStatus status,
+                    const android::sp<HGraphicBufferProducer>& producer,
+                    const android::sp<HGraphicBufferSource>& source) {
+                s = status;
+                gbp = producer;
+                gbs = source;
+            });
+    if (transStatus.isOk() && s == OmxStatus::OK) {
+        return new PersistentSurface(
+                new H2BGraphicBufferProducer(gbp),
+                sp<::android::IGraphicBufferSource>(new LWGraphicBufferSource(gbs)));
+    }
+
+    return nullptr;
+}
+
+sp<PersistentSurface> CCodec::CreateCompatibleInputSurface() {
+    sp<PersistentSurface> surface(CreateInputSurface());
+
+    if (surface == nullptr) {
+        surface = CreateOmxInputSurface();
+    }
+
+    return surface;
+}
+
 void CCodec::createInputSurface() {
     status_t err;
     sp<IGraphicBufferProducer> bufferProducer;
@@ -955,7 +1042,7 @@ void CCodec::createInputSurface() {
         outputFormat = config->mOutputFormat;
     }
 
-    std::shared_ptr<PersistentSurface> persistentSurface(CreateInputSurface());
+    sp<PersistentSurface> persistentSurface = CreateCompatibleInputSurface();
 
     if (persistentSurface->getHidlTarget()) {
         sp<IInputSurface> hidlInputSurface = IInputSurface::castFrom(
@@ -1343,7 +1430,6 @@ void CCodec::flush() {
     }
 
     mChannel->flush(flushedWork);
-    subQueuedWorkCount(flushedWork.size());
 
     {
         Mutexed<State>::Locked state(mState);
@@ -1381,11 +1467,7 @@ void CCodec::signalResume() {
     (void)mChannel->requestInitialInputBuffers();
 }
 
-void CCodec::signalSetParameters(const sp<AMessage> &params) {
-    setParameters(params);
-}
-
-void CCodec::setParameters(const sp<AMessage> &params) {
+void CCodec::signalSetParameters(const sp<AMessage> &msg) {
     std::shared_ptr<Codec2Client::Component> comp;
     auto checkState = [this, &comp] {
         Mutexed<State>::Locked state(mState);
@@ -1399,6 +1481,15 @@ void CCodec::setParameters(const sp<AMessage> &params) {
         return;
     }
 
+    // NOTE: We used to ignore "bitrate" at setParameters; replicate
+    //       the behavior here.
+    sp<AMessage> params = msg;
+    int32_t bitrate;
+    if (params->findInt32(KEY_BIT_RATE, &bitrate)) {
+        params = msg->dup();
+        params->removeEntryAt(params->findEntryByName(KEY_BIT_RATE));
+    }
+
     Mutexed<Config>::Locked config(mConfig);
 
     /**
@@ -1406,7 +1497,7 @@ void CCodec::setParameters(const sp<AMessage> &params) {
      */
     if ((config->mDomain & (Config::IS_VIDEO | Config::IS_IMAGE))
             && (config->mDomain & Config::IS_ENCODER) && config->mInputSurface && config->mISConfig) {
-        (void)params->findInt64("time-offset-us", &config->mISConfig->mTimeOffsetUs);
+        (void)params->findInt64(PARAMETER_KEY_OFFSET_TIME, &config->mISConfig->mTimeOffsetUs);
 
         if (params->findInt64("skip-frames-before", &config->mISConfig->mStartAtUs)) {
             config->mISConfig->mStopped = false;
@@ -1415,10 +1506,10 @@ void CCodec::setParameters(const sp<AMessage> &params) {
         }
 
         int32_t value;
-        if (params->findInt32("drop-input-frames", &value)) {
+        if (params->findInt32(PARAMETER_KEY_SUSPEND, &value)) {
             config->mISConfig->mSuspended = value;
             config->mISConfig->mSuspendAtUs = -1;
-            (void)params->findInt64("drop-start-time-us", &config->mISConfig->mSuspendAtUs);
+            (void)params->findInt64(PARAMETER_KEY_SUSPEND_TIME, &config->mISConfig->mSuspendAtUs);
         }
 
         (void)config->mInputSurface->configure(*config->mISConfig);
@@ -1465,28 +1556,16 @@ void CCodec::signalRequestIDRFrame() {
     config->setParameters(comp, params, C2_MAY_BLOCK);
 }
 
-void CCodec::onWorkDone(std::list<std::unique_ptr<C2Work>> &workItems,
-                        size_t numDiscardedInputBuffers) {
+void CCodec::onWorkDone(std::list<std::unique_ptr<C2Work>> &workItems) {
     if (!workItems.empty()) {
-        {
-            Mutexed<std::list<size_t>>::Locked numDiscardedInputBuffersQueue(
-                    mNumDiscardedInputBuffersQueue);
-            numDiscardedInputBuffersQueue->insert(
-                    numDiscardedInputBuffersQueue->end(),
-                    workItems.size() - 1, 0);
-            numDiscardedInputBuffersQueue->emplace_back(
-                    numDiscardedInputBuffers);
-        }
-        {
-            Mutexed<std::list<std::unique_ptr<C2Work>>>::Locked queue(mWorkDoneQueue);
-            queue->splice(queue->end(), workItems);
-        }
+        Mutexed<std::list<std::unique_ptr<C2Work>>>::Locked queue(mWorkDoneQueue);
+        queue->splice(queue->end(), workItems);
     }
     (new AMessage(kWhatWorkDone, this))->post();
 }
 
-void CCodec::onInputBufferDone(const std::shared_ptr<C2Buffer>& buffer) {
-    mChannel->onInputBufferDone(buffer);
+void CCodec::onInputBufferDone(uint64_t frameIndex, size_t arrayIndex) {
+    mChannel->onInputBufferDone(frameIndex, arrayIndex);
 }
 
 void CCodec::onMessageReceived(const sp<AMessage> &msg) {
@@ -1512,7 +1591,6 @@ void CCodec::onMessageReceived(const sp<AMessage> &msg) {
         case kWhatStart: {
             // C2Component::start() should return within 500ms.
             setDeadline(now, 550ms, "start");
-            mQueuedWorkCount = 0;
             start();
             break;
         }
@@ -1520,10 +1598,6 @@ void CCodec::onMessageReceived(const sp<AMessage> &msg) {
             // C2Component::stop() should return within 500ms.
             setDeadline(now, 550ms, "stop");
             stop();
-
-            mQueuedWorkCount = 0;
-            Mutexed<NamedTimePoint>::Locked deadline(mQueueDeadline);
-            deadline->set(TimePoint::max(), "none");
             break;
         }
         case kWhatFlush: {
@@ -1549,7 +1623,6 @@ void CCodec::onMessageReceived(const sp<AMessage> &msg) {
         }
         case kWhatWorkDone: {
             std::unique_ptr<C2Work> work;
-            size_t numDiscardedInputBuffers;
             bool shouldPost = false;
             {
                 Mutexed<std::list<std::unique_ptr<C2Work>>>::Locked queue(mWorkDoneQueue);
@@ -1560,24 +1633,10 @@ void CCodec::onMessageReceived(const sp<AMessage> &msg) {
                 queue->pop_front();
                 shouldPost = !queue->empty();
             }
-            {
-                Mutexed<std::list<size_t>>::Locked numDiscardedInputBuffersQueue(
-                        mNumDiscardedInputBuffersQueue);
-                if (numDiscardedInputBuffersQueue->empty()) {
-                    numDiscardedInputBuffers = 0;
-                } else {
-                    numDiscardedInputBuffers = numDiscardedInputBuffersQueue->front();
-                    numDiscardedInputBuffersQueue->pop_front();
-                }
-            }
             if (shouldPost) {
                 (new AMessage(kWhatWorkDone, this))->post();
             }
 
-            if (work->worklets.empty()
-                    || !(work->worklets.front()->output.flags & C2FrameData::FLAG_INCOMPLETE)) {
-                subQueuedWorkCount(1);
-            }
             // handle configuration changes in work done
             Mutexed<Config>::Locked config(mConfig);
             bool changed = false;
@@ -1641,8 +1700,7 @@ void CCodec::onMessageReceived(const sp<AMessage> &msg) {
             }
             mChannel->onWorkDone(
                     std::move(work), changed ? config->mOutputFormat : nullptr,
-                    initData.hasChanged() ? initData.update().get() : nullptr,
-                    numDiscardedInputBuffers);
+                    initData.hasChanged() ? initData.update().get() : nullptr);
             break;
         }
         case kWhatWatch: {
@@ -1669,13 +1727,22 @@ void CCodec::setDeadline(
 void CCodec::initiateReleaseIfStuck() {
     std::string name;
     bool pendingDeadline = false;
-    for (Mutexed<NamedTimePoint> *deadlinePtr : { &mDeadline, &mQueueDeadline, &mEosDeadline }) {
-        Mutexed<NamedTimePoint>::Locked deadline(*deadlinePtr);
+    {
+        Mutexed<NamedTimePoint>::Locked deadline(mDeadline);
         if (deadline->get() < std::chrono::steady_clock::now()) {
             name = deadline->getName();
-            break;
         }
         if (deadline->get() != TimePoint::max()) {
+            pendingDeadline = true;
+        }
+    }
+    if (name.empty()) {
+        constexpr std::chrono::steady_clock::duration kWorkDurationThreshold = 3s;
+        std::chrono::steady_clock::duration elapsed = mChannel->elapsed();
+        if (elapsed >= kWorkDurationThreshold) {
+            name = "queue";
+        }
+        if (elapsed > 0s) {
             pendingDeadline = true;
         }
     }
@@ -1694,79 +1761,23 @@ void CCodec::initiateReleaseIfStuck() {
     mCallback->onError(UNKNOWN_ERROR, ACTION_CODE_FATAL);
 }
 
-void CCodec::onWorkQueued(bool eos) {
-    ALOGV("queued work count +1 from %d", mQueuedWorkCount.load());
-    int32_t count = ++mQueuedWorkCount;
-    if (eos) {
-        CCodecWatchdog::getInstance()->watch(this);
-        Mutexed<NamedTimePoint>::Locked deadline(mEosDeadline);
-        deadline->set(std::chrono::steady_clock::now() + 3s, "eos");
-    }
-    // TODO: query and use input/pipeline/output delay combined
-    if (count >= 4) {
-        CCodecWatchdog::getInstance()->watch(this);
-        Mutexed<NamedTimePoint>::Locked deadline(mQueueDeadline);
-        deadline->set(std::chrono::steady_clock::now() + 3s, "queue");
-    }
-}
-
-void CCodec::subQueuedWorkCount(uint32_t count) {
-    ALOGV("queued work count -%u from %d", count, mQueuedWorkCount.load());
-    int32_t currentCount = (mQueuedWorkCount -= count);
-    if (currentCount == 0) {
-        Mutexed<NamedTimePoint>::Locked deadline(mEosDeadline);
-        deadline->set(TimePoint::max(), "none");
-    }
-    Mutexed<NamedTimePoint>::Locked deadline(mQueueDeadline);
-    deadline->set(TimePoint::max(), "none");
-}
-
 }  // namespace android
 
 extern "C" android::CodecBase *CreateCodec() {
     return new android::CCodec;
 }
 
+// Create Codec 2.0 input surface
 extern "C" android::PersistentSurface *CreateInputSurface() {
     // Attempt to create a Codec2's input surface.
     std::shared_ptr<android::Codec2Client::InputSurface> inputSurface =
             android::Codec2Client::CreateInputSurface();
-    if (inputSurface) {
-        return new android::PersistentSurface(
-                inputSurface->getGraphicBufferProducer(),
-                static_cast<android::sp<android::hidl::base::V1_0::IBase>>(
-                inputSurface->getHalInterface()));
+    if (!inputSurface) {
+        return nullptr;
     }
-
-    // Fall back to OMX.
-    using namespace android::hardware::media::omx::V1_0;
-    using namespace android::hardware::media::omx::V1_0::utils;
-    using namespace android::hardware::graphics::bufferqueue::V1_0::utils;
-    typedef android::hardware::media::omx::V1_0::Status OmxStatus;
-    android::sp<IOmx> omx = IOmx::getService();
-    typedef android::hardware::graphics::bufferqueue::V1_0::
-            IGraphicBufferProducer HGraphicBufferProducer;
-    typedef android::hardware::media::omx::V1_0::
-            IGraphicBufferSource HGraphicBufferSource;
-    OmxStatus s;
-    android::sp<HGraphicBufferProducer> gbp;
-    android::sp<HGraphicBufferSource> gbs;
-    android::Return<void> transStatus = omx->createInputSurface(
-            [&s, &gbp, &gbs](
-                    OmxStatus status,
-                    const android::sp<HGraphicBufferProducer>& producer,
-                    const android::sp<HGraphicBufferSource>& source) {
-                s = status;
-                gbp = producer;
-                gbs = source;
-            });
-    if (transStatus.isOk() && s == OmxStatus::OK) {
-        return new android::PersistentSurface(
-                new H2BGraphicBufferProducer(gbp),
-                sp<::android::IGraphicBufferSource>(
-                    new LWGraphicBufferSource(gbs)));
-    }
-
-    return nullptr;
+    return new android::PersistentSurface(
+            inputSurface->getGraphicBufferProducer(),
+            static_cast<android::sp<android::hidl::base::V1_0::IBase>>(
+            inputSurface->getHalInterface()));
 }
 

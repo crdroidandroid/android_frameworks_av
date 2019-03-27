@@ -51,6 +51,12 @@ public:
         noInputLatency();
         noTimeStretch();
 
+        // TODO: Proper support for reorder depth.
+        addParameter(
+                DefineParam(mActualOutputDelay, C2_PARAMKEY_OUTPUT_DELAY)
+                .withConstValue(new C2PortActualDelayTuning::output(8u))
+                .build());
+
         // TODO: output latency and reordering
 
         addParameter(
@@ -192,7 +198,7 @@ public:
     }
 
     static C2R SizeSetter(bool mayBlock, const C2P<C2StreamPictureSizeInfo::output> &oldMe,
-                          C2P<C2VideoSizeStreamInfo::output> &me) {
+                          C2P<C2StreamPictureSizeInfo::output> &me) {
         (void)mayBlock;
         C2R res = C2R::Ok();
         if (!me.F(me.v.width).supportsAtAll(me.v.width)) {
@@ -839,7 +845,7 @@ void C2SoftAvcDec::process(
                 mHeight = s_decode_op.u4_pic_ht;
                 CHECK_EQ(0u, s_decode_op.u4_output_present);
 
-                C2VideoSizeStreamInfo::output size(0u, mWidth, mHeight);
+                C2StreamPictureSizeInfo::output size(0u, mWidth, mHeight);
                 std::vector<std::unique_ptr<C2SettingResult>> failures;
                 c2_status_t err = mIntf->config({&size}, C2_MAY_BLOCK, &failures);
                 if (err == OK) {
@@ -877,6 +883,8 @@ void C2SoftAvcDec::process(
     } else if (!hasPicture) {
         fillEmptyWork(work);
     }
+
+    work->input.buffers.clear();
 }
 
 c2_status_t C2SoftAvcDec::drainInternal(

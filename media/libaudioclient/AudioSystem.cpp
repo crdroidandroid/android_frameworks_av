@@ -522,10 +522,12 @@ void AudioSystem::AudioFlingerClient::ioConfigChanged(audio_io_config_event even
     if (ioDesc == 0 || ioDesc->mIoHandle == AUDIO_IO_HANDLE_NONE) return;
 
     audio_port_handle_t deviceId = AUDIO_PORT_HANDLE_NONE;
-    Vector < wp<AudioDeviceCallback> > callbacks;
-
+    Vector<sp<AudioDeviceCallback>> callbacksToCall;
     {
         Mutex::Autolock _l(mLock);
+        bool deviceValidOrChanged = false;
+        bool sendCallbacks = false;
+        ssize_t ioIndex = -1;
 
         switch (event) {
         case AUDIO_OUTPUT_OPENED:
@@ -543,10 +545,16 @@ void AudioSystem::AudioFlingerClient::ioConfigChanged(audio_io_config_event even
             if (ioDesc->getDeviceId() != AUDIO_PORT_HANDLE_NONE) {
                 deviceId = ioDesc->getDeviceId();
                 if (event == AUDIO_OUTPUT_OPENED || event == AUDIO_INPUT_OPENED) {
-                    ssize_t ioIndex = mAudioDeviceCallbacks.indexOfKey(ioDesc->mIoHandle);
+                    ioIndex = mAudioDeviceCallbackProxies.indexOfKey(ioDesc->mIoHandle);
                     if (ioIndex >= 0) {
-                        callbacks = mAudioDeviceCallbacks.valueAt(ioIndex);
+                        sendCallbacks = true;
+                        deviceValidOrChanged = true;
                     }
+                }
+                if (event == AUDIO_OUTPUT_REGISTERED || event == AUDIO_INPUT_REGISTERED) {
+                    ioIndex = mAudioDeviceCallbackProxies.indexOfKey(ioDesc->mIoHandle);
+                    sendCallbacks = (ioIndex >= 0)
+                            && !mAudioDeviceCallbackProxies.valueAt(ioIndex).notifiedOnce();
                 }
             }
             ALOGV("ioConfigChanged() new %s %s %d samplingRate %u, format %#x channel mask %#x "
@@ -569,7 +577,7 @@ void AudioSystem::AudioFlingerClient::ioConfigChanged(audio_io_config_event even
                   event == AUDIO_OUTPUT_CLOSED ? "output" : "input", ioDesc->mIoHandle);
 
             mIoDescriptors.removeItem(ioDesc->mIoHandle);
-            mAudioDeviceCallbacks.removeItem(ioDesc->mIoHandle);
+            mAudioDeviceCallbackProxies.removeItem(ioDesc->mIoHandle);
             } break;
 
         case AUDIO_OUTPUT_CONFIG_CHANGED:
@@ -584,11 +592,10 @@ void AudioSystem::AudioFlingerClient::ioConfigChanged(audio_io_config_event even
             mIoDescriptors.replaceValueFor(ioDesc->mIoHandle, ioDesc);
 
             if (deviceId != ioDesc->getDeviceId()) {
+                deviceValidOrChanged = true;
                 deviceId = ioDesc->getDeviceId();
-                ssize_t ioIndex = mAudioDeviceCallbacks.indexOfKey(ioDesc->mIoHandle);
-                if (ioIndex >= 0) {
-                    callbacks = mAudioDeviceCallbacks.valueAt(ioIndex);
-                }
+                ioIndex = mAudioDeviceCallbackProxies.indexOfKey(ioDesc->mIoHandle);
+                sendCallbacks = ioIndex >= 0;
             }
             ALOGV("ioConfigChanged() new config for %s %d samplingRate %u, format %#x "
                     "channel mask %#x frameCount %zu frameCountHAL %zu deviceId %d",
@@ -599,24 +606,34 @@ void AudioSystem::AudioFlingerClient::ioConfigChanged(audio_io_config_event even
 
         } break;
         }
-    }
-    bool callbackRemoved = false;
-    // callbacks.size() != 0 =>  ioDesc->mIoHandle and deviceId are valid
-    for (size_t i = 0; i < callbacks.size(); ) {
-        sp<AudioDeviceCallback> callback = callbacks[i].promote();
-        if (callback.get() != nullptr) {
-            callback->onAudioDeviceUpdate(ioDesc->mIoHandle, deviceId);
-            i++;
-        } else {
-            callbacks.removeAt(i);
-            callbackRemoved = true;
+
+        // sendCallbacks true =>  ioDesc->mIoHandle and deviceId are valid
+        if (sendCallbacks) {
+            AudioDeviceCallbackProxies &callbackProxies =
+                mAudioDeviceCallbackProxies.editValueAt(ioIndex);
+            for (size_t i = 0; i < callbackProxies.size(); ) {
+                sp<AudioDeviceCallback> callback = callbackProxies[i]->callback();
+                if (callback.get() != nullptr) {
+                    // Call the callback only if the device actually changed, the input or output
+                    // was opened or closed or the client was newly registered and the callback
+                    // was never called
+                    if (!callbackProxies[i]->notifiedOnce() || deviceValidOrChanged) {
+                        callbacksToCall.add(callback);
+                        callbackProxies[i]->setNotifiedOnce();
+                    }
+                    i++;
+                } else {
+                    callbackProxies.removeAt(i);
+                }
+            }
+            callbackProxies.setNotifiedOnce();
         }
     }
-    // clean up callback list while we are here if some clients have disappeared without
-    // unregistering their callback
-    if (callbackRemoved) {
-        Mutex::Autolock _l(mLock);
-        mAudioDeviceCallbacks.replaceValueFor(ioDesc->mIoHandle, callbacks);
+
+    // Callbacks must be called without mLock held. May lead to dead lock if calling for
+    // example getRoutedDevice that updates the device and tries to acquire mLock.
+    for (size_t i = 0; i < callbacksToCall.size(); i++) {
+        callbacksToCall[i]->onAudioDeviceUpdate(ioDesc->mIoHandle, deviceId);
     }
 }
 
@@ -672,20 +689,21 @@ status_t AudioSystem::AudioFlingerClient::addAudioDeviceCallback(
         const wp<AudioDeviceCallback>& callback, audio_io_handle_t audioIo)
 {
     Mutex::Autolock _l(mLock);
-    Vector < wp<AudioDeviceCallback> > callbacks;
-    ssize_t ioIndex = mAudioDeviceCallbacks.indexOfKey(audioIo);
+    AudioDeviceCallbackProxies callbackProxies;
+    ssize_t ioIndex = mAudioDeviceCallbackProxies.indexOfKey(audioIo);
     if (ioIndex >= 0) {
-        callbacks = mAudioDeviceCallbacks.valueAt(ioIndex);
+        callbackProxies = mAudioDeviceCallbackProxies.valueAt(ioIndex);
     }
 
-    for (size_t cbIndex = 0; cbIndex < callbacks.size(); cbIndex++) {
-        if (callbacks[cbIndex].unsafe_get() == callback.unsafe_get()) {
+    for (size_t cbIndex = 0; cbIndex < callbackProxies.size(); cbIndex++) {
+        sp<AudioDeviceCallback> cbk = callbackProxies[cbIndex]->callback();
+        if (cbk.get() == callback.unsafe_get()) {
             return INVALID_OPERATION;
         }
     }
-    callbacks.add(callback);
-
-    mAudioDeviceCallbacks.replaceValueFor(audioIo, callbacks);
+    callbackProxies.add(new AudioDeviceCallbackProxy(callback));
+    callbackProxies.resetNotifiedOnce();
+    mAudioDeviceCallbackProxies.replaceValueFor(audioIo, callbackProxies);
     return NO_ERROR;
 }
 
@@ -693,26 +711,26 @@ status_t AudioSystem::AudioFlingerClient::removeAudioDeviceCallback(
         const wp<AudioDeviceCallback>& callback, audio_io_handle_t audioIo)
 {
     Mutex::Autolock _l(mLock);
-    ssize_t ioIndex = mAudioDeviceCallbacks.indexOfKey(audioIo);
+    ssize_t ioIndex = mAudioDeviceCallbackProxies.indexOfKey(audioIo);
     if (ioIndex < 0) {
         return INVALID_OPERATION;
     }
-    Vector < wp<AudioDeviceCallback> > callbacks = mAudioDeviceCallbacks.valueAt(ioIndex);
-
+    AudioDeviceCallbackProxies callbackProxies = mAudioDeviceCallbackProxies.valueAt(ioIndex);
     size_t cbIndex;
-    for (cbIndex = 0; cbIndex < callbacks.size(); cbIndex++) {
-        if (callbacks[cbIndex].unsafe_get() == callback.unsafe_get()) {
+    for (cbIndex = 0; cbIndex < callbackProxies.size(); cbIndex++) {
+        sp<AudioDeviceCallback> cbk = callbackProxies[cbIndex]->callback();
+        if (cbk.get() == callback.unsafe_get()) {
             break;
         }
     }
-    if (cbIndex == callbacks.size()) {
+    if (cbIndex == callbackProxies.size()) {
         return INVALID_OPERATION;
     }
-    callbacks.removeAt(cbIndex);
-    if (callbacks.size() != 0) {
-        mAudioDeviceCallbacks.replaceValueFor(audioIo, callbacks);
+    callbackProxies.removeAt(cbIndex);
+    if (callbackProxies.size() != 0) {
+        mAudioDeviceCallbackProxies.replaceValueFor(audioIo, callbackProxies);
     } else {
-        mAudioDeviceCallbacks.removeItem(audioIo);
+        mAudioDeviceCallbackProxies.removeItem(audioIo);
     }
     return NO_ERROR;
 }
@@ -774,6 +792,7 @@ const sp<IAudioPolicyService> AudioSystem::get_audio_policy_service()
         int64_t token = IPCThreadState::self()->clearCallingIdentity();
         ap->registerClient(apc);
         ap->setAudioPortCallbacksEnabled(apc->isAudioPortCbEnabled());
+        ap->setAudioVolumeGroupCallbacksEnabled(apc->isAudioVolumeGroupCbEnabled());
         IPCThreadState::self()->restoreCallingIdentity(token);
     }
 
@@ -872,13 +891,14 @@ status_t AudioSystem::getOutputForAttr(const audio_attributes_t *attr,
                                         const audio_config_t *config,
                                         audio_output_flags_t flags,
                                         audio_port_handle_t *selectedDeviceId,
-                                        audio_port_handle_t *portId)
+                                        audio_port_handle_t *portId,
+                                        std::vector<audio_io_handle_t> *secondaryOutputs)
 {
     const sp<IAudioPolicyService>& aps = AudioSystem::get_audio_policy_service();
     if (aps == 0) return NO_INIT;
     return aps->getOutputForAttr(attr, output, session, stream, pid, uid,
                                  config,
-                                 flags, selectedDeviceId, portId);
+                                 flags, selectedDeviceId, portId, secondaryOutputs);
 }
 
 status_t AudioSystem::startOutput(audio_port_handle_t portId)
@@ -966,6 +986,38 @@ status_t AudioSystem::getStreamVolumeIndex(audio_stream_type_t stream,
     const sp<IAudioPolicyService>& aps = AudioSystem::get_audio_policy_service();
     if (aps == 0) return PERMISSION_DENIED;
     return aps->getStreamVolumeIndex(stream, index, device);
+}
+
+status_t AudioSystem::setVolumeIndexForAttributes(const audio_attributes_t &attr,
+                                                  int index,
+                                                  audio_devices_t device)
+{
+    const sp<IAudioPolicyService>& aps = AudioSystem::get_audio_policy_service();
+    if (aps == 0) return PERMISSION_DENIED;
+    return aps->setVolumeIndexForAttributes(attr, index, device);
+}
+
+status_t AudioSystem::getVolumeIndexForAttributes(const audio_attributes_t &attr,
+                                                  int &index,
+                                                  audio_devices_t device)
+{
+    const sp<IAudioPolicyService>& aps = AudioSystem::get_audio_policy_service();
+    if (aps == 0) return PERMISSION_DENIED;
+    return aps->getVolumeIndexForAttributes(attr, index, device);
+}
+
+status_t AudioSystem::getMaxVolumeIndexForAttributes(const audio_attributes_t &attr, int &index)
+{
+    const sp<IAudioPolicyService>& aps = AudioSystem::get_audio_policy_service();
+    if (aps == 0) return PERMISSION_DENIED;
+    return aps->getMaxVolumeIndexForAttributes(attr, index);
+}
+
+status_t AudioSystem::getMinVolumeIndexForAttributes(const audio_attributes_t &attr, int &index)
+{
+    const sp<IAudioPolicyService>& aps = AudioSystem::get_audio_policy_service();
+    if (aps == 0) return PERMISSION_DENIED;
+    return aps->getMinVolumeIndexForAttributes(attr, index);
 }
 
 uint32_t AudioSystem::getStrategyForStream(audio_stream_type_t stream)
@@ -1167,6 +1219,38 @@ status_t AudioSystem::removeAudioPortCallback(const sp<AudioPortCallback>& callb
     int ret = gAudioPolicyServiceClient->removeAudioPortCallback(callback);
     if (ret == 0) {
         aps->setAudioPortCallbacksEnabled(false);
+    }
+    return (ret < 0) ? INVALID_OPERATION : NO_ERROR;
+}
+
+status_t AudioSystem::addAudioVolumeGroupCallback(const sp<AudioVolumeGroupCallback>& callback)
+{
+    const sp<IAudioPolicyService>& aps = AudioSystem::get_audio_policy_service();
+    if (aps == 0) return PERMISSION_DENIED;
+
+    Mutex::Autolock _l(gLockAPS);
+    if (gAudioPolicyServiceClient == 0) {
+        return NO_INIT;
+    }
+    int ret = gAudioPolicyServiceClient->addAudioVolumeGroupCallback(callback);
+    if (ret == 1) {
+        aps->setAudioVolumeGroupCallbacksEnabled(true);
+    }
+    return (ret < 0) ? INVALID_OPERATION : NO_ERROR;
+}
+
+status_t AudioSystem::removeAudioVolumeGroupCallback(const sp<AudioVolumeGroupCallback>& callback)
+{
+    const sp<IAudioPolicyService>& aps = AudioSystem::get_audio_policy_service();
+    if (aps == 0) return PERMISSION_DENIED;
+
+    Mutex::Autolock _l(gLockAPS);
+    if (gAudioPolicyServiceClient == 0) {
+        return NO_INIT;
+    }
+    int ret = gAudioPolicyServiceClient->removeAudioVolumeGroupCallback(callback);
+    if (ret == 0) {
+        aps->setAudioVolumeGroupCallbacksEnabled(false);
     }
     return (ret < 0) ? INVALID_OPERATION : NO_ERROR;
 }
@@ -1384,12 +1468,16 @@ audio_attributes_t AudioSystem::streamTypeToAttributes(audio_stream_type_t strea
 
 audio_stream_type_t AudioSystem::attributesToStreamType(const audio_attributes_t &attr)
 {
-    product_strategy_t strategyId =
-            AudioSystem::getProductStrategyFromAudioAttributes(AudioAttributes(attr));
+    product_strategy_t psId;
+    status_t ret = AudioSystem::getProductStrategyFromAudioAttributes(AudioAttributes(attr), psId);
+    if (ret != NO_ERROR) {
+        ALOGE("no strategy found for attributes %s",  toString(attr).c_str());
+        return AUDIO_STREAM_MUSIC;
+    }
     AudioProductStrategyVector strategies;
     listAudioProductStrategies(strategies);
     for (const auto &strategy : strategies) {
-        if (strategy.getId() == strategyId) {
+        if (strategy.getId() == psId) {
             auto attrVect = strategy.getAudioAttributes();
             auto iter = std::find_if(begin(attrVect), end(attrVect), [&attr](const auto &refAttr) {
                              return AudioProductStrategy::attributesMatches(
@@ -1403,11 +1491,27 @@ audio_stream_type_t AudioSystem::attributesToStreamType(const audio_attributes_t
     return AUDIO_STREAM_MUSIC;
 }
 
-product_strategy_t AudioSystem::getProductStrategyFromAudioAttributes(const AudioAttributes &aa)
+status_t AudioSystem::getProductStrategyFromAudioAttributes(const AudioAttributes &aa,
+                                                            product_strategy_t &productStrategy)
 {
     const sp<IAudioPolicyService>& aps = AudioSystem::get_audio_policy_service();
-    if (aps == 0) return PRODUCT_STRATEGY_NONE;
-    return aps->getProductStrategyFromAudioAttributes(aa);
+    if (aps == 0) return PERMISSION_DENIED;
+    return aps->getProductStrategyFromAudioAttributes(aa,productStrategy);
+}
+
+status_t AudioSystem::listAudioVolumeGroups(AudioVolumeGroupVector &groups)
+{
+    const sp<IAudioPolicyService>& aps = AudioSystem::get_audio_policy_service();
+    if (aps == 0) return PERMISSION_DENIED;
+    return aps->listAudioVolumeGroups(groups);
+}
+
+status_t AudioSystem::getVolumeGroupFromAudioAttributes(const AudioAttributes &aa,
+                                                        volume_group_t &volumeGroup)
+{
+    const sp<IAudioPolicyService>& aps = AudioSystem::get_audio_policy_service();
+    if (aps == 0) return PERMISSION_DENIED;
+    return aps->getVolumeGroupFromAudioAttributes(aa, volumeGroup);
 }
 
 // ---------------------------------------------------------------------------
@@ -1459,6 +1563,47 @@ void AudioSystem::AudioPolicyServiceClient::onAudioPatchListUpdate()
     }
 }
 
+// ----------------------------------------------------------------------------
+int AudioSystem::AudioPolicyServiceClient::addAudioVolumeGroupCallback(
+        const sp<AudioVolumeGroupCallback>& callback)
+{
+    Mutex::Autolock _l(mLock);
+    for (size_t i = 0; i < mAudioVolumeGroupCallback.size(); i++) {
+        if (mAudioVolumeGroupCallback[i] == callback) {
+            return -1;
+        }
+    }
+    mAudioVolumeGroupCallback.add(callback);
+    return mAudioVolumeGroupCallback.size();
+}
+
+int AudioSystem::AudioPolicyServiceClient::removeAudioVolumeGroupCallback(
+        const sp<AudioVolumeGroupCallback>& callback)
+{
+    Mutex::Autolock _l(mLock);
+    size_t i;
+    for (i = 0; i < mAudioVolumeGroupCallback.size(); i++) {
+        if (mAudioVolumeGroupCallback[i] == callback) {
+            break;
+        }
+    }
+    if (i == mAudioVolumeGroupCallback.size()) {
+        return -1;
+    }
+    mAudioVolumeGroupCallback.removeAt(i);
+    return mAudioVolumeGroupCallback.size();
+}
+
+void AudioSystem::AudioPolicyServiceClient::onAudioVolumeGroupChanged(volume_group_t group,
+                                                                      int flags)
+{
+    Mutex::Autolock _l(mLock);
+    for (size_t i = 0; i < mAudioVolumeGroupCallback.size(); i++) {
+        mAudioVolumeGroupCallback[i]->onAudioVolumeGroupChanged(group, flags);
+    }
+}
+// ----------------------------------------------------------------------------
+
 void AudioSystem::AudioPolicyServiceClient::onDynamicPolicyMixStateUpdate(
         String8 regId, int32_t state)
 {
@@ -1501,6 +1646,9 @@ void AudioSystem::AudioPolicyServiceClient::binderDied(const wp<IBinder>& who __
         Mutex::Autolock _l(mLock);
         for (size_t i = 0; i < mAudioPortCallbacks.size(); i++) {
             mAudioPortCallbacks[i]->onServiceDied();
+        }
+        for (size_t i = 0; i < mAudioVolumeGroupCallback.size(); i++) {
+            mAudioVolumeGroupCallback[i]->onServiceDied();
         }
     }
     {

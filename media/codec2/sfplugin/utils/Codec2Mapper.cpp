@@ -65,7 +65,9 @@ ALookup<C2Config::level_t, int32_t> sAvcLevels = {
     { C2Config::LEVEL_AVC_5,    AVCLevel5 },
     { C2Config::LEVEL_AVC_5_1,  AVCLevel51 },
     { C2Config::LEVEL_AVC_5_2,  AVCLevel52 },
-
+    { C2Config::LEVEL_AVC_6,    AVCLevel6 },
+    { C2Config::LEVEL_AVC_6_1,  AVCLevel61 },
+    { C2Config::LEVEL_AVC_6_2,  AVCLevel62 },
 };
 
 ALookup<C2Config::profile_t, int32_t> sAvcProfiles = {
@@ -99,7 +101,7 @@ ALookup<C2Color::matrix_t, ColorAspects::MatrixCoeffs> sColorMatricesSf = {
     { C2Color::MATRIX_BT709,           ColorAspects::MatrixBT709_5 },
     { C2Color::MATRIX_FCC47_73_682,    ColorAspects::MatrixBT470_6M },
     { C2Color::MATRIX_BT601,           ColorAspects::MatrixBT601_6 },
-    { C2Color::MATRIX_SMPTE240M,       ColorAspects::MatrixSMPTE240M },
+    { C2Color::MATRIX_240M,       ColorAspects::MatrixSMPTE240M },
     { C2Color::MATRIX_BT2020,          ColorAspects::MatrixBT2020 },
     { C2Color::MATRIX_BT2020_CONSTANT, ColorAspects::MatrixBT2020Constant },
     { C2Color::MATRIX_OTHER,           ColorAspects::MatrixOther },
@@ -853,19 +855,19 @@ bool C2Mapper::map(
 
     switch (primaries) {
         case C2Color::PRIMARIES_BT601_525:
-            *dataSpace |= (matrix == C2Color::MATRIX_SMPTE240M
+            *dataSpace |= (matrix == C2Color::MATRIX_240M
                             || matrix == C2Color::MATRIX_BT709)
                     ? HAL_DATASPACE_STANDARD_BT601_525_UNADJUSTED
                     : HAL_DATASPACE_STANDARD_BT601_525;
             break;
         case C2Color::PRIMARIES_BT601_625:
-            *dataSpace |= (matrix == C2Color::MATRIX_SMPTE240M
+            *dataSpace |= (matrix == C2Color::MATRIX_240M
                             || matrix == C2Color::MATRIX_BT709)
                     ? HAL_DATASPACE_STANDARD_BT601_625_UNADJUSTED
                     : HAL_DATASPACE_STANDARD_BT601_625;
             break;
         case C2Color::PRIMARIES_BT2020:
-            *dataSpace |= (matrix == C2Color::MATRIX_BT2020CONSTANT
+            *dataSpace |= (matrix == C2Color::MATRIX_BT2020_CONSTANT
                     ? HAL_DATASPACE_STANDARD_BT2020_CONSTANT_LUMINANCE
                     : HAL_DATASPACE_STANDARD_BT2020);
             break;

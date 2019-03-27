@@ -37,6 +37,7 @@
 
 #include <media/stagefright/BufferProducerWrapper.h>
 #include <media/stagefright/MediaCodec.h>
+#include <media/stagefright/MediaCodecConstants.h>
 #include <media/stagefright/MediaDefs.h>
 #include <media/stagefright/OMXClient.h>
 #include <media/stagefright/PersistentSurface.h>
@@ -174,11 +175,7 @@ static sp<DataConverter> getCopyConverter() {
 }
 
 struct CodecObserver : public BnOMXObserver {
-    CodecObserver() {}
-
-    void setNotificationMessage(const sp<AMessage> &msg) {
-        mNotify = msg;
-    }
+    explicit CodecObserver(const sp<AMessage> &msg) : mNotify(msg) {}
 
     // from IOMXObserver
     virtual void onMessages(const std::list<omx_message> &messages) {
@@ -254,7 +251,7 @@ protected:
     virtual ~CodecObserver() {}
 
 private:
-    sp<AMessage> mNotify;
+    const sp<AMessage> mNotify;
 
     DISALLOW_EVIL_CONSTRUCTORS(CodecObserver);
 };
@@ -1838,20 +1835,19 @@ status_t ACodec::configureCodec(
         }
 
         if (!msg->findInt64(
-                    "repeat-previous-frame-after",
-                    &mRepeatFrameDelayUs)) {
+                KEY_REPEAT_PREVIOUS_FRAME_AFTER, &mRepeatFrameDelayUs)) {
             mRepeatFrameDelayUs = -1LL;
         }
 
         // only allow 32-bit value, since we pass it as U32 to OMX.
-        if (!msg->findInt64("max-pts-gap-to-encoder", &mMaxPtsGapUs)) {
+        if (!msg->findInt64(KEY_MAX_PTS_GAP_TO_ENCODER, &mMaxPtsGapUs)) {
             mMaxPtsGapUs = 0LL;
         } else if (mMaxPtsGapUs > INT32_MAX || mMaxPtsGapUs < INT32_MIN) {
             ALOGW("Unsupported value for max pts gap %lld", (long long) mMaxPtsGapUs);
             mMaxPtsGapUs = 0LL;
         }
 
-        if (!msg->findFloat("max-fps-to-encoder", &mMaxFps)) {
+        if (!msg->findFloat(KEY_MAX_FPS_TO_ENCODER, &mMaxFps)) {
             mMaxFps = -1;
         }
 
@@ -1865,8 +1861,8 @@ status_t ACodec::configureCodec(
         }
 
         if (!msg->findInt32(
-                    "create-input-buffers-suspended",
-                    (int32_t*)&mCreateInputBuffersSuspended)) {
+                KEY_CREATE_INPUT_SURFACE_SUSPENDED,
+                (int32_t*)&mCreateInputBuffersSuspended)) {
             mCreateInputBuffersSuspended = false;
         }
     }
@@ -2110,7 +2106,8 @@ status_t ACodec::configureCodec(
         if (usingSwRenderer) {
             outputFormat->setInt32("using-sw-renderer", 1);
         }
-    } else if (!strcasecmp(mime, MEDIA_MIMETYPE_AUDIO_MPEG)) {
+    } else if (!strcasecmp(mime, MEDIA_MIMETYPE_AUDIO_MPEG) ||
+        !strcasecmp(mime, MEDIA_MIMETYPE_AUDIO_MPEG_LAYER_II)) {
         int32_t numChannels, sampleRate;
         if (!msg->findInt32("channel-count", &numChannels)
                 || !msg->findInt32("sample-rate", &sampleRate)) {
@@ -4333,27 +4330,27 @@ int /* OMX_VIDEO_AVCLEVELTYPE */ ACodec::getAVCLevelFor(
     int maxDimension = max(width, height);
 
     static const int limits[][5] = {
-        /*   MBps     MB   dim  bitrate        level */
-        {    1485,    99,  28,     64, OMX_VIDEO_AVCLevel1  },
-        {    1485,    99,  28,    128, OMX_VIDEO_AVCLevel1b },
-        {    3000,   396,  56,    192, OMX_VIDEO_AVCLevel11 },
-        {    6000,   396,  56,    384, OMX_VIDEO_AVCLevel12 },
-        {   11880,   396,  56,    768, OMX_VIDEO_AVCLevel13 },
-        {   11880,   396,  56,   2000, OMX_VIDEO_AVCLevel2  },
-        {   19800,   792,  79,   4000, OMX_VIDEO_AVCLevel21 },
-        {   20250,  1620, 113,   4000, OMX_VIDEO_AVCLevel22 },
-        {   40500,  1620, 113,  10000, OMX_VIDEO_AVCLevel3  },
-        {  108000,  3600, 169,  14000, OMX_VIDEO_AVCLevel31 },
-        {  216000,  5120, 202,  20000, OMX_VIDEO_AVCLevel32 },
-        {  245760,  8192, 256,  20000, OMX_VIDEO_AVCLevel4  },
-        {  245760,  8192, 256,  50000, OMX_VIDEO_AVCLevel41 },
-        {  522240,  8704, 263,  50000, OMX_VIDEO_AVCLevel42 },
-        {  589824, 22080, 420, 135000, OMX_VIDEO_AVCLevel5  },
-        {  983040, 36864, 543, 240000, OMX_VIDEO_AVCLevel51 },
-        { 2073600, 36864, 543, 240000, OMX_VIDEO_AVCLevel52 },
-        { 4177920, 139264, 543, 240000, OMX_VIDEO_AVCLevel6  },
-        { 8355840, 139264, 543, 480000, OMX_VIDEO_AVCLevel61 },
-        { 16711680, 139264, 543, 800000, OMX_VIDEO_AVCLevel62 },
+        /*    MBps      MB   dim  bitrate        level */
+        {     1485,     99,   28,     64, OMX_VIDEO_AVCLevel1  },
+        {     1485,     99,   28,    128, OMX_VIDEO_AVCLevel1b },
+        {     3000,    396,   56,    192, OMX_VIDEO_AVCLevel11 },
+        {     6000,    396,   56,    384, OMX_VIDEO_AVCLevel12 },
+        {    11880,    396,   56,    768, OMX_VIDEO_AVCLevel13 },
+        {    11880,    396,   56,   2000, OMX_VIDEO_AVCLevel2  },
+        {    19800,    792,   79,   4000, OMX_VIDEO_AVCLevel21 },
+        {    20250,   1620,  113,   4000, OMX_VIDEO_AVCLevel22 },
+        {    40500,   1620,  113,  10000, OMX_VIDEO_AVCLevel3  },
+        {   108000,   3600,  169,  14000, OMX_VIDEO_AVCLevel31 },
+        {   216000,   5120,  202,  20000, OMX_VIDEO_AVCLevel32 },
+        {   245760,   8192,  256,  20000, OMX_VIDEO_AVCLevel4  },
+        {   245760,   8192,  256,  50000, OMX_VIDEO_AVCLevel41 },
+        {   522240,   8704,  263,  50000, OMX_VIDEO_AVCLevel42 },
+        {   589824,  22080,  420, 135000, OMX_VIDEO_AVCLevel5  },
+        {   983040,  36864,  543, 240000, OMX_VIDEO_AVCLevel51 },
+        {  2073600,  36864,  543, 240000, OMX_VIDEO_AVCLevel52 },
+        {  4177920, 139264, 1055, 240000, OMX_VIDEO_AVCLevel6  },
+        {  8355840, 139264, 1055, 480000, OMX_VIDEO_AVCLevel61 },
+        { 16711680, 139264, 1055, 800000, OMX_VIDEO_AVCLevel62 },
     };
 
     for (size_t i = 0; i < ARRAY_SIZE(limits); i++) {
@@ -4470,9 +4467,9 @@ status_t ACodec::setupAVCEncoderParameters(const sp<AMessage> &msg) {
         h264type.nRefFrames = 2;
         h264type.nBFrames = mLatency == 0 ? 1 : std::min(1U, mLatency - 1);
 
-        // disable B-frames until MPEG4Writer can guarantee finalizing files with B-frames
-        // h264type.nRefFrames = 1;
-        // h264type.nBFrames = 0;
+        // disable B-frames until we have explicit settings for enabling the feature.
+        h264type.nRefFrames = 1;
+        h264type.nBFrames = 0;
 
         h264type.nPFrames = setPFramesSpacing(iFrameInterval, frameRate, h264type.nBFrames);
         h264type.nAllowedPictureTypes =
@@ -6601,8 +6598,10 @@ void ACodec::UninitializedState::stateEntered() {
 
     if (mDeathNotifier != NULL) {
         if (mCodec->mOMXNode != NULL) {
-            auto tOmxNode = mCodec->mOMXNode->getHalInterface();
-            tOmxNode->unlinkToDeath(mDeathNotifier);
+            auto tOmxNode = mCodec->mOMXNode->getHalInterface<IOmxNode>();
+            if (tOmxNode) {
+                tOmxNode->unlinkToDeath(mDeathNotifier);
+            }
         }
         mDeathNotifier.clear();
     }
@@ -6689,7 +6688,8 @@ bool ACodec::UninitializedState::onAllocateComponent(const sp<AMessage> &msg) {
 
     CHECK(mCodec->mOMXNode == NULL);
 
-    sp<AMessage> notify = new AMessage(kWhatOMXDied, mCodec);
+    sp<AMessage> notify = new AMessage(kWhatOMXMessageList, mCodec);
+    notify->setInt32("generation", mCodec->mNodeGeneration + 1);
 
     sp<RefBase> obj;
     CHECK(msg->findObject("codecInfo", &obj));
@@ -6713,7 +6713,7 @@ bool ACodec::UninitializedState::onAllocateComponent(const sp<AMessage> &msg) {
         owner = (info->getOwnerName() == nullptr) ? "default" : info->getOwnerName();
     }
 
-    sp<CodecObserver> observer = new CodecObserver;
+    sp<CodecObserver> observer = new CodecObserver(notify);
     sp<IOMX> omx;
     sp<IOMXNode> omxNode;
 
@@ -6739,14 +6739,12 @@ bool ACodec::UninitializedState::onAllocateComponent(const sp<AMessage> &msg) {
     }
 
     mDeathNotifier = new DeathNotifier(notify);
-    auto tOmxNode = omxNode->getHalInterface();
-    if (!tOmxNode->linkToDeath(mDeathNotifier, 0)) {
+    auto tOmxNode = omxNode->getHalInterface<IOmxNode>();
+    if (tOmxNode && !tOmxNode->linkToDeath(mDeathNotifier, 0)) {
         mDeathNotifier.clear();
     }
 
-    notify = new AMessage(kWhatOMXMessageList, mCodec);
-    notify->setInt32("generation", ++mCodec->mNodeGeneration);
-    observer->setNotificationMessage(notify);
+    ++mCodec->mNodeGeneration;
 
     mCodec->mComponentName = componentName;
     mCodec->mRenderTracker.setComponentName(componentName);
@@ -7515,7 +7513,7 @@ status_t ACodec::setParameters(const sp<AMessage> &params) {
     }
 
     int64_t timeOffsetUs;
-    if (params->findInt64("time-offset-us", &timeOffsetUs)) {
+    if (params->findInt64(PARAMETER_KEY_OFFSET_TIME, &timeOffsetUs)) {
         if (mGraphicBufferSource == NULL) {
             ALOGE("[%s] Invalid to set input buffer time offset without surface",
                     mComponentName.c_str());
@@ -7551,7 +7549,7 @@ status_t ACodec::setParameters(const sp<AMessage> &params) {
     }
 
     int32_t dropInputFrames;
-    if (params->findInt32("drop-input-frames", &dropInputFrames)) {
+    if (params->findInt32(PARAMETER_KEY_SUSPEND, &dropInputFrames)) {
         if (mGraphicBufferSource == NULL) {
             ALOGE("[%s] Invalid to set suspend without surface",
                     mComponentName.c_str());
@@ -7559,7 +7557,7 @@ status_t ACodec::setParameters(const sp<AMessage> &params) {
         }
 
         int64_t suspendStartTimeUs = -1;
-        (void) params->findInt64("drop-start-time-us", &suspendStartTimeUs);
+        (void) params->findInt64(PARAMETER_KEY_SUSPEND_TIME, &suspendStartTimeUs);
         status_t err = statusFromBinderStatus(
                 mGraphicBufferSource->setSuspend(dropInputFrames != 0, suspendStartTimeUs));
 
@@ -8056,10 +8054,9 @@ void ACodec::onSignalEndOfInputStream() {
 }
 
 sp<IOMXObserver> ACodec::createObserver() {
-    sp<CodecObserver> observer = new CodecObserver;
     sp<AMessage> notify = new AMessage(kWhatOMXMessageList, this);
-    notify->setInt32("generation", this->mNodeGeneration);
-    observer->setNotificationMessage(notify);
+    notify->setInt32("generation", this->mNodeGeneration + 1);
+    sp<CodecObserver> observer = new CodecObserver(notify);
     return observer;
 }
 
@@ -8255,9 +8252,8 @@ bool ACodec::OutputPortSettingsChangedState::onOMXEvent(
                             OMX_CommandPortEnable, kPortIndexOutput);
                 }
 
-                /* Clear the RenderQueue in which queued GraphicBuffers hold the
-                 * actual buffer references in order to free them early.
-                 */
+                // Clear the RenderQueue in which queued GraphicBuffers hold the
+                // actual buffer references in order to free them early.
                 mCodec->mRenderTracker.clear(systemTime(CLOCK_MONOTONIC));
 
                 if (err == OK) {
@@ -8674,7 +8670,7 @@ status_t ACodec::queryCapabilities(
     }
 
     sp<IOMX> omx = client.interface();
-    sp<CodecObserver> observer = new CodecObserver;
+    sp<CodecObserver> observer = new CodecObserver(new AMessage);
     sp<IOMXNode> omxNode;
 
     err = omx->allocateNode(name, observer, &omxNode);

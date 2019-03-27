@@ -60,7 +60,11 @@ public:
         noInputLatency();
         noTimeStretch();
 
-        // TODO: output latency and reordering
+        // TODO: Proper support for reorder depth.
+        addParameter(
+                DefineParam(mActualOutputDelay, C2_PARAMKEY_OUTPUT_DELAY)
+                .withConstValue(new C2PortActualDelayTuning::output(1u))
+                .build());
 
         addParameter(
                 DefineParam(mAttrib, C2_PARAMKEY_COMPONENT_ATTRIBUTES)
@@ -182,7 +186,7 @@ public:
     }
 
     static C2R SizeSetter(bool mayBlock, const C2P<C2StreamPictureSizeInfo::output> &oldMe,
-                          C2P<C2VideoSizeStreamInfo::output> &me) {
+                          C2P<C2StreamPictureSizeInfo::output> &me) {
         (void)mayBlock;
         C2R res = C2R::Ok();
         if (!me.F(me.v.width).supportsAtAll(me.v.width)) {
@@ -570,7 +574,7 @@ void C2SoftMpeg4Dec::process(
         PVSetPostProcType(mDecHandle, 0);
         if (handleResChange(work)) {
             ALOGI("Setting width and height");
-            C2VideoSizeStreamInfo::output size(0u, mWidth, mHeight);
+            C2StreamPictureSizeInfo::output size(0u, mWidth, mHeight);
             std::vector<std::unique_ptr<C2SettingResult>> failures;
             c2_status_t err = mIntf->config({&size}, C2_MAY_BLOCK, &failures);
             if (err == OK) {
@@ -642,7 +646,7 @@ void C2SoftMpeg4Dec::process(
             return;
         } else if (resChange) {
             ALOGI("Setting width and height");
-            C2VideoSizeStreamInfo::output size(0u, mWidth, mHeight);
+            C2StreamPictureSizeInfo::output size(0u, mWidth, mHeight);
             std::vector<std::unique_ptr<C2SettingResult>> failures;
             c2_status_t err = mIntf->config({&size}, C2_MAY_BLOCK, &failures);
             if (err == OK) {

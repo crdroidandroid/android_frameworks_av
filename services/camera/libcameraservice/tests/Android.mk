@@ -27,14 +27,19 @@ LOCAL_SHARED_LIBRARIES := \
     libcamera_client \
     libcamera_metadata \
     libutils \
+    libjpeg \
+    libexif \
     android.hardware.camera.common@1.0 \
     android.hardware.camera.provider@2.4 \
+    android.hardware.camera.provider@2.5 \
     android.hardware.camera.device@1.0 \
     android.hardware.camera.device@3.2 \
     android.hardware.camera.device@3.4
 
 LOCAL_C_INCLUDES += \
     system/media/private/camera/include \
+    external/dynamic_depth/includes \
+    external/dynamic_depth/internal \
 
 LOCAL_CFLAGS += -Wall -Wextra -Werror
 

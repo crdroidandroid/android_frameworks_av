@@ -94,6 +94,11 @@ public:
      */
     virtual void getArray(Vector<sp<MediaCodecBuffer>> *) const {}
 
+    /**
+     * Return number of buffers the client owns.
+     */
+    virtual size_t numClientBuffers() const = 0;
+
 protected:
     std::string mComponentName; ///< name of component for debugging
     std::string mChannelName; ///< name of channel for debugging
@@ -181,7 +186,7 @@ public:
      * MediaCodec behavior.
      */
     virtual status_t registerCsd(
-            const C2StreamCsdInfo::output * /* csd */,
+            const C2StreamInitDataInfo::output * /* csd */,
             size_t * /* index */,
             sp<MediaCodecBuffer> * /* clientBuffer */) = 0;
 
@@ -248,6 +253,34 @@ public:
      */
     void transferSkipCutBuffer(const sp<SkipCutBuffer> &scb) {
         mSkipCutBuffer = scb;
+    }
+
+    void handleImageData(const sp<Codec2Buffer> &buffer) {
+        sp<ABuffer> imageDataCandidate = buffer->getImageData();
+        if (imageDataCandidate == nullptr) {
+            return;
+        }
+        sp<ABuffer> imageData;
+        if (!mFormat->findBuffer("image-data", &imageData)
+                || imageDataCandidate->size() != imageData->size()
+                || memcmp(imageDataCandidate->data(), imageData->data(), imageData->size()) != 0) {
+            ALOGD("[%s] updating image-data", mName);
+            sp<AMessage> newFormat = dupFormat();
+            newFormat->setBuffer("image-data", imageDataCandidate);
+            MediaImage2 *img = (MediaImage2*)imageDataCandidate->data();
+            if (img->mNumPlanes > 0 && img->mType != img->MEDIA_IMAGE_TYPE_UNKNOWN) {
+                int32_t stride = img->mPlane[0].mRowInc;
+                newFormat->setInt32(KEY_STRIDE, stride);
+                ALOGD("[%s] updating stride = %d", mName, stride);
+                if (img->mNumPlanes > 1 && stride > 0) {
+                    int32_t vstride = (img->mPlane[1].mOffset - img->mPlane[0].mOffset) / stride;
+                    newFormat->setInt32(KEY_SLICE_HEIGHT, vstride);
+                    ALOGD("[%s] updating vstride = %d", mName, vstride);
+                }
+            }
+            setFormat(newFormat);
+            buffer->setFormat(newFormat);
+        }
     }
 
 protected:
@@ -508,6 +541,14 @@ public:
         mBuffers.clear();
     }
 
+    size_t numClientBuffers() const {
+        return std::count_if(
+                mBuffers.begin(), mBuffers.end(),
+                [](const Entry &entry) {
+                    return (entry.clientBuffer != nullptr);
+                });
+    }
+
 private:
     friend class BuffersArrayImpl;
 
@@ -693,6 +734,14 @@ public:
         }
     }
 
+    size_t numClientBuffers() const {
+        return std::count_if(
+                mBuffers.begin(), mBuffers.end(),
+                [](const Entry &entry) {
+                    return entry.ownedByClient;
+                });
+    }
+
 private:
     std::string mImplName; ///< name for debugging
     const char *mName; ///< C-string version of name
@@ -754,6 +803,10 @@ public:
 
     void flush() override {
         mImpl.flush();
+    }
+
+    size_t numClientBuffers() const final {
+        return mImpl.numClientBuffers();
     }
 
 private:
@@ -821,6 +874,10 @@ public:
                 size,
                 [this, capacity] () -> sp<Codec2Buffer> { return alloc(capacity); });
         return std::move(array);
+    }
+
+    size_t numClientBuffers() const final {
+        return mImpl.numClientBuffers();
     }
 
     virtual sp<Codec2Buffer> alloc(size_t size) {
@@ -967,6 +1024,10 @@ public:
         return std::move(array);
     }
 
+    size_t numClientBuffers() const final {
+        return mImpl.numClientBuffers();
+    }
+
 private:
     FlexBuffersImpl mImpl;
     std::shared_ptr<C2AllocatorStore> mStore;
@@ -1030,6 +1091,10 @@ public:
         return std::move(array);
     }
 
+    size_t numClientBuffers() const final {
+        return mImpl.numClientBuffers();
+    }
+
 private:
     FlexBuffersImpl mImpl;
     std::shared_ptr<LocalBufferPool> mLocalBufferPool;
@@ -1064,6 +1129,10 @@ public:
 
     void getArray(Vector<sp<MediaCodecBuffer>> *array) const final {
         array->clear();
+    }
+
+    size_t numClientBuffers() const final {
+        return 0u;
     }
 };
 
@@ -1111,13 +1180,14 @@ public:
             return WOULD_BLOCK;
         }
         submit(c2Buffer);
+        handleImageData(c2Buffer);
         *clientBuffer = c2Buffer;
         ALOGV("[%s] grabbed buffer %zu", mName, *index);
         return OK;
     }
 
     status_t registerCsd(
-            const C2StreamCsdInfo::output *csd,
+            const C2StreamInitDataInfo::output *csd,
             size_t *index,
             sp<MediaCodecBuffer> *clientBuffer) final {
         sp<Codec2Buffer> c2Buffer;
@@ -1185,6 +1255,10 @@ public:
         mImpl.realloc(alloc);
     }
 
+    size_t numClientBuffers() const final {
+        return mImpl.numClientBuffers();
+    }
+
 private:
     BuffersArrayImpl mImpl;
 };
@@ -1205,13 +1279,14 @@ public:
         }
         newBuffer->setFormat(mFormat);
         *index = mImpl.assignSlot(newBuffer);
+        handleImageData(newBuffer);
         *clientBuffer = newBuffer;
         ALOGV("[%s] registered buffer %zu", mName, *index);
         return OK;
     }
 
     status_t registerCsd(
-            const C2StreamCsdInfo::output *csd,
+            const C2StreamInitDataInfo::output *csd,
             size_t *index,
             sp<MediaCodecBuffer> *clientBuffer) final {
         sp<Codec2Buffer> newBuffer = new LocalLinearBuffer(
@@ -1244,6 +1319,10 @@ public:
                 size,
                 [this]() { return allocateArrayBuffer(); });
         return std::move(array);
+    }
+
+    size_t numClientBuffers() const final {
+        return mImpl.numClientBuffers();
     }
 
     /**
@@ -1422,90 +1501,6 @@ void CCodecBufferChannel::QueueSync::stop() {
     count->value = -1;
 }
 
-// CCodecBufferChannel::PipelineCapacity
-
-CCodecBufferChannel::PipelineCapacity::PipelineCapacity()
-      : input(0), component(0),
-        mName("<UNKNOWN COMPONENT>") {
-}
-
-void CCodecBufferChannel::PipelineCapacity::initialize(
-        int newInput,
-        int newComponent,
-        const char* newName,
-        const char* callerTag) {
-    input.store(newInput, std::memory_order_relaxed);
-    component.store(newComponent, std::memory_order_relaxed);
-    mName = newName;
-    ALOGV("[%s] %s -- PipelineCapacity::initialize(): "
-          "pipeline availability initialized ==> "
-          "input = %d, component = %d",
-            mName, callerTag ? callerTag : "*",
-            newInput, newComponent);
-}
-
-bool CCodecBufferChannel::PipelineCapacity::allocate(const char* callerTag) {
-    int prevInput = input.fetch_sub(1, std::memory_order_relaxed);
-    int prevComponent = component.fetch_sub(1, std::memory_order_relaxed);
-    if (prevInput > 0 && prevComponent > 0) {
-        ALOGV("[%s] %s -- PipelineCapacity::allocate() returns true: "
-              "pipeline availability -1 all ==> "
-              "input = %d, component = %d",
-                mName, callerTag ? callerTag : "*",
-                prevInput - 1,
-                prevComponent - 1);
-        return true;
-    }
-    input.fetch_add(1, std::memory_order_relaxed);
-    component.fetch_add(1, std::memory_order_relaxed);
-    ALOGV("[%s] %s -- PipelineCapacity::allocate() returns false: "
-          "pipeline availability unchanged ==> "
-          "input = %d, component = %d",
-            mName, callerTag ? callerTag : "*",
-            prevInput,
-            prevComponent);
-    return false;
-}
-
-void CCodecBufferChannel::PipelineCapacity::free(const char* callerTag) {
-    int prevInput = input.fetch_add(1, std::memory_order_relaxed);
-    int prevComponent = component.fetch_add(1, std::memory_order_relaxed);
-    ALOGV("[%s] %s -- PipelineCapacity::free(): "
-          "pipeline availability +1 all ==> "
-          "input = %d, component = %d",
-            mName, callerTag ? callerTag : "*",
-            prevInput + 1,
-            prevComponent + 1);
-}
-
-int CCodecBufferChannel::PipelineCapacity::freeInputSlots(
-        size_t numDiscardedInputBuffers,
-        const char* callerTag) {
-    int prevInput = input.fetch_add(numDiscardedInputBuffers,
-                                    std::memory_order_relaxed);
-    ALOGV("[%s] %s -- PipelineCapacity::freeInputSlots(%zu): "
-          "pipeline availability +%zu input ==> "
-          "input = %d, component = %d",
-            mName, callerTag ? callerTag : "*",
-            numDiscardedInputBuffers,
-            numDiscardedInputBuffers,
-            prevInput + static_cast<int>(numDiscardedInputBuffers),
-            component.load(std::memory_order_relaxed));
-    return prevInput + static_cast<int>(numDiscardedInputBuffers);
-}
-
-int CCodecBufferChannel::PipelineCapacity::freeComponentSlot(
-        const char* callerTag) {
-    int prevComponent = component.fetch_add(1, std::memory_order_relaxed);
-    ALOGV("[%s] %s -- PipelineCapacity::freeComponentSlot(): "
-          "pipeline availability +1 component ==> "
-          "input = %d, component = %d",
-            mName, callerTag ? callerTag : "*",
-            input.load(std::memory_order_relaxed),
-            prevComponent + 1);
-    return prevComponent + 1;
-}
-
 // CCodecBufferChannel::ReorderStash
 
 CCodecBufferChannel::ReorderStash::ReorderStash() {
@@ -1592,11 +1587,12 @@ CCodecBufferChannel::CCodecBufferChannel(
       mCCodecCallback(callback),
       mNumInputSlots(kSmoothnessFactor),
       mNumOutputSlots(kSmoothnessFactor),
+      mDelay(0),
       mFrameIndex(0u),
       mFirstValidFrameIndex(0u),
       mMetaMode(MODE_NONE),
-      mAvailablePipelineCapacity(),
       mInputMetEos(false) {
+    mOutputSurface.lock()->maxDequeueBuffers = kSmoothnessFactor + kRenderingDepth;
     Mutexed<std::unique_ptr<InputBuffers>>::Locked buffers(mInputBuffers);
     buffers->reset(new DummyInputBuffers(""));
 }
@@ -1658,6 +1654,9 @@ status_t CCodecBufferChannel::queueInputBufferInternal(const sp<MediaCodecBuffer
     work->input.ordinal.customOrdinal = timeUs;
     work->input.buffers.clear();
 
+    uint64_t queuedFrameIndex = work->input.ordinal.frameIndex.peeku();
+    std::vector<std::shared_ptr<C2Buffer>> queuedBuffers;
+
     if (buffer->size() > 0u) {
         Mutexed<std::unique_ptr<InputBuffers>>::Locked buffers(mInputBuffers);
         std::shared_ptr<C2Buffer> c2buffer;
@@ -1665,11 +1664,9 @@ status_t CCodecBufferChannel::queueInputBufferInternal(const sp<MediaCodecBuffer
             return -ENOENT;
         }
         work->input.buffers.push_back(c2buffer);
-    } else {
-        mAvailablePipelineCapacity.freeInputSlots(1, "queueInputBufferInternal");
-        if (eos) {
-            flags |= C2FrameData::FLAG_END_OF_STREAM;
-        }
+        queuedBuffers.push_back(c2buffer);
+    } else if (eos) {
+        flags |= C2FrameData::FLAG_END_OF_STREAM;
     }
     work->input.flags = (C2FrameData::flags_t)flags;
     // TODO: fill info's
@@ -1680,10 +1677,16 @@ status_t CCodecBufferChannel::queueInputBufferInternal(const sp<MediaCodecBuffer
 
     std::list<std::unique_ptr<C2Work>> items;
     items.push_back(std::move(work));
+    mPipelineWatcher.lock()->onWorkQueued(
+            queuedFrameIndex,
+            std::move(queuedBuffers),
+            PipelineWatcher::Clock::now());
     c2_status_t err = mComponent->queue(&items);
+    if (err != C2_OK) {
+        mPipelineWatcher.lock()->onWorkDone(queuedFrameIndex);
+    }
 
     if (err == C2_OK && eos && buffer->size() > 0u) {
-        mCCodecCallback->onWorkQueued(false);
         work.reset(new C2Work);
         work->input.ordinal.timestamp = timeUs;
         work->input.ordinal.frameIndex = mFrameIndex++;
@@ -1693,13 +1696,22 @@ status_t CCodecBufferChannel::queueInputBufferInternal(const sp<MediaCodecBuffer
         work->input.flags = C2FrameData::FLAG_END_OF_STREAM;
         work->worklets.emplace_back(new C2Worklet);
 
+        queuedFrameIndex = work->input.ordinal.frameIndex.peeku();
+        queuedBuffers.clear();
+
         items.clear();
         items.push_back(std::move(work));
+
+        mPipelineWatcher.lock()->onWorkQueued(
+                queuedFrameIndex,
+                std::move(queuedBuffers),
+                PipelineWatcher::Clock::now());
         err = mComponent->queue(&items);
+        if (err != C2_OK) {
+            mPipelineWatcher.lock()->onWorkDone(queuedFrameIndex);
+        }
     }
     if (err == C2_OK) {
-        mCCodecCallback->onWorkQueued(eos);
-
         Mutexed<std::unique_ptr<InputBuffers>>::Locked buffers(mInputBuffers);
         bool released = (*buffers)->releaseBuffer(buffer, nullptr, true);
         ALOGV("[%s] queueInputBuffer: buffer %sreleased", mName, released ? "" : "not ");
@@ -1844,16 +1856,26 @@ void CCodecBufferChannel::feedInputBufferIfAvailable() {
 }
 
 void CCodecBufferChannel::feedInputBufferIfAvailableInternal() {
-    while (!mInputMetEos &&
-           !mReorderStash.lock()->hasPending() &&
-           mAvailablePipelineCapacity.allocate("feedInputBufferIfAvailable")) {
+    if (mInputMetEos ||
+           mReorderStash.lock()->hasPending() ||
+           mPipelineWatcher.lock()->pipelineFull()) {
+        return;
+    } else {
+        Mutexed<std::unique_ptr<OutputBuffers>>::Locked buffers(mOutputBuffers);
+        if ((*buffers)->numClientBuffers() >= mNumOutputSlots) {
+            return;
+        }
+    }
+    for (size_t i = 0; i < mNumInputSlots; ++i) {
         sp<MediaCodecBuffer> inBuffer;
         size_t index;
         {
             Mutexed<std::unique_ptr<InputBuffers>>::Locked buffers(mInputBuffers);
+            if ((*buffers)->numClientBuffers() >= mNumInputSlots) {
+                return;
+            }
             if (!(*buffers)->requestNewBuffer(&index, &inBuffer)) {
                 ALOGV("[%s] no new buffer available", mName);
-                mAvailablePipelineCapacity.free("feedInputBufferIfAvailable");
                 break;
             }
         }
@@ -2032,15 +2054,12 @@ status_t CCodecBufferChannel::discardBuffer(const sp<MediaCodecBuffer> &buffer) 
     {
         Mutexed<std::unique_ptr<InputBuffers>>::Locked buffers(mInputBuffers);
         if (*buffers && (*buffers)->releaseBuffer(buffer, nullptr, true)) {
-            buffers.unlock();
             released = true;
-            mAvailablePipelineCapacity.freeInputSlots(1, "discardBuffer");
         }
     }
     {
         Mutexed<std::unique_ptr<OutputBuffers>>::Locked buffers(mOutputBuffers);
         if (*buffers && (*buffers)->releaseBuffer(buffer, nullptr)) {
-            buffers.unlock();
             released = true;
         }
     }
@@ -2117,11 +2136,13 @@ status_t CCodecBufferChannel::start(
         }
     }
 
-    mNumInputSlots =
-        (inputDelay ? inputDelay.value : 0) +
-        (pipelineDelay ? pipelineDelay.value : 0) +
-        kSmoothnessFactor;
-    mNumOutputSlots = (outputDelay ? outputDelay.value : 0) + kSmoothnessFactor;
+    uint32_t inputDelayValue = inputDelay ? inputDelay.value : 0;
+    uint32_t pipelineDelayValue = pipelineDelay ? pipelineDelay.value : 0;
+    uint32_t outputDelayValue = outputDelay ? outputDelay.value : 0;
+
+    mNumInputSlots = inputDelayValue + pipelineDelayValue + kSmoothnessFactor;
+    mNumOutputSlots = outputDelayValue + kSmoothnessFactor;
+    mDelay = inputDelayValue + pipelineDelayValue + outputDelayValue;
 
     // TODO: get this from input format
     bool secure = mComponent->getName().find(".secure") != std::string::npos;
@@ -2133,7 +2154,7 @@ status_t CCodecBufferChannel::start(
             1 << C2PlatformAllocatorStore::BUFFERQUEUE);
 
     if (inputFormat != nullptr) {
-        bool graphic = (iStreamFormat.value == C2FormatVideo);
+        bool graphic = (iStreamFormat.value == C2BufferData::GRAPHIC);
         std::shared_ptr<C2BlockPool> pool;
         {
             Mutexed<BlockPools>::Locked pools(mBlockPools);
@@ -2249,12 +2270,16 @@ status_t CCodecBufferChannel::start(
         uint32_t outputGeneration;
         {
             Mutexed<OutputSurface>::Locked output(mOutputSurface);
+            output->maxDequeueBuffers = mNumOutputSlots + reorderDepth.value + kRenderingDepth;
             outputSurface = output->surface ?
                     output->surface->getIGraphicBufferProducer() : nullptr;
+            if (outputSurface) {
+                output->surface->setMaxDequeuedBufferCount(output->maxDequeueBuffers);
+            }
             outputGeneration = output->generation;
         }
 
-        bool graphic = (oStreamFormat.value == C2FormatVideo);
+        bool graphic = (oStreamFormat.value == C2BufferData::GRAPHIC);
         C2BlockPool::local_id_t outputPoolId_;
 
         {
@@ -2408,10 +2433,14 @@ status_t CCodecBufferChannel::start(
     // about buffers from the previous generation do not interfere with the
     // newly initialized pipeline capacity.
 
-    mAvailablePipelineCapacity.initialize(
-            mNumInputSlots,
-            mNumInputSlots + mNumOutputSlots,
-            mName);
+    {
+        Mutexed<PipelineWatcher>::Locked watcher(mPipelineWatcher);
+        watcher->inputDelay(inputDelayValue)
+                .pipelineDelay(pipelineDelayValue)
+                .outputDelay(outputDelayValue)
+                .smoothnessFactor(kSmoothnessFactor);
+        watcher->flush();
+    }
 
     mInputMetEos = false;
     mSync.start();
@@ -2423,7 +2452,7 @@ status_t CCodecBufferChannel::requestInitialInputBuffers() {
         return OK;
     }
 
-    C2StreamFormatConfig::output oStreamFormat(0u);
+    C2StreamBufferTypeSetting::output oStreamFormat(0u);
     c2_status_t err = mComponent->query({ &oStreamFormat }, {}, C2_DONT_BLOCK, nullptr);
     if (err != C2_OK) {
         return UNKNOWN_ERROR;
@@ -2472,21 +2501,16 @@ status_t CCodecBufferChannel::requestInitialInputBuffers() {
                 buffer->meta()->setInt64("timeUs", 0);
                 post = false;
             }
-            if (mAvailablePipelineCapacity.allocate("requestInitialInputBuffers")) {
-                if (post) {
-                    mCallback->onInputBufferAvailable(index, buffer);
-                } else {
-                    toBeQueued.emplace_back(buffer);
-                }
+            if (post) {
+                mCallback->onInputBufferAvailable(index, buffer);
             } else {
-                ALOGD("[%s] pipeline is full while requesting %zu-th input buffer",
-                        mName, i);
+                toBeQueued.emplace_back(buffer);
             }
         }
     }
     for (const sp<MediaCodecBuffer> &buffer : toBeQueued) {
         if (queueInputBufferInternal(buffer) != OK) {
-            mAvailablePipelineCapacity.freeComponentSlot("requestInitialInputBuffers");
+            ALOGV("[%s] Error while queueing initial buffers", mName);
         }
     }
     return OK;
@@ -2532,28 +2556,25 @@ void CCodecBufferChannel::flush(const std::list<std::unique_ptr<C2Work>> &flushe
         (*buffers)->flush(flushedWork);
     }
     mReorderStash.lock()->flush();
+    mPipelineWatcher.lock()->flush();
 }
 
 void CCodecBufferChannel::onWorkDone(
         std::unique_ptr<C2Work> work, const sp<AMessage> &outputFormat,
-        const C2StreamInitDataInfo::output *initData,
-        size_t numDiscardedInputBuffers) {
+        const C2StreamInitDataInfo::output *initData) {
     if (handleWork(std::move(work), outputFormat, initData)) {
-        mAvailablePipelineCapacity.freeInputSlots(numDiscardedInputBuffers,
-                                                  "onWorkDone");
         feedInputBufferIfAvailable();
     }
 }
 
 void CCodecBufferChannel::onInputBufferDone(
-        const std::shared_ptr<C2Buffer>& buffer) {
+        uint64_t frameIndex, size_t arrayIndex) {
+    std::shared_ptr<C2Buffer> buffer =
+            mPipelineWatcher.lock()->onInputBufferReleased(frameIndex, arrayIndex);
     bool newInputSlotAvailable;
     {
         Mutexed<std::unique_ptr<InputBuffers>>::Locked buffers(mInputBuffers);
         newInputSlotAvailable = (*buffers)->expireComponentBuffer(buffer);
-        if (newInputSlotAvailable) {
-            mAvailablePipelineCapacity.freeInputSlots(1, "onInputBufferDone");
-        }
     }
     if (newInputSlotAvailable) {
         feedInputBufferIfAvailable();
@@ -2573,7 +2594,7 @@ bool CCodecBufferChannel::handleWork(
     if (work->worklets.size() != 1u
             || !work->worklets.front()
             || !(work->worklets.front()->output.flags & C2FrameData::FLAG_INCOMPLETE)) {
-        mAvailablePipelineCapacity.freeComponentSlot("handleWork");
+        mPipelineWatcher.lock()->onWorkDone(work->input.ordinal.frameIndex.peeku());
     }
 
     if (work->result == C2_NOT_FOUND) {
@@ -2622,6 +2643,11 @@ bool CCodecBufferChannel::handleWork(
                     mReorderStash.lock()->setDepth(reorderDepth.value);
                     ALOGV("[%s] onWorkDone: updated reorder depth to %u",
                           mName, reorderDepth.value);
+                    Mutexed<OutputSurface>::Locked output(mOutputSurface);
+                    output->maxDequeueBuffers = mNumOutputSlots + reorderDepth.value + kRenderingDepth;
+                    if (output->surface) {
+                        output->surface->setMaxDequeuedBufferCount(output->maxDequeueBuffers);
+                    }
                 } else {
                     ALOGD("[%s] onWorkDone: failed to read reorder depth", mName);
                 }
@@ -2718,7 +2744,7 @@ bool CCodecBufferChannel::handleWork(
             // TODO: properly translate these to metadata
             switch (info->coreIndex().coreIndex()) {
                 case C2StreamPictureTypeMaskInfo::CORE_INDEX:
-                    if (((C2StreamPictureTypeMaskInfo *)info.get())->value & C2PictureTypeKeyFrame) {
+                    if (((C2StreamPictureTypeMaskInfo *)info.get())->value & C2Config::SYNC_FRAME) {
                         flags |= MediaCodec::BUFFER_FLAG_SYNCFRAME;
                     }
                     break;
@@ -2797,7 +2823,6 @@ status_t CCodecBufferChannel::setSurface(const sp<Surface> &newSurface) {
     sp<IGraphicBufferProducer> producer;
     if (newSurface) {
         newSurface->setScalingMode(NATIVE_WINDOW_SCALING_MODE_SCALE_TO_WINDOW);
-        newSurface->setMaxDequeuedBufferCount(mNumOutputSlots + kRenderingDepth);
         producer = newSurface->getIGraphicBufferProducer();
         producer->setGenerationNumber(generation);
     } else {
@@ -2825,11 +2850,20 @@ status_t CCodecBufferChannel::setSurface(const sp<Surface> &newSurface) {
 
     {
         Mutexed<OutputSurface>::Locked output(mOutputSurface);
+        newSurface->setMaxDequeuedBufferCount(output->maxDequeueBuffers);
         output->surface = newSurface;
         output->generation = generation;
     }
 
     return OK;
+}
+
+PipelineWatcher::Clock::duration CCodecBufferChannel::elapsed() {
+    // When client pushed EOS, we want all the work to be done quickly.
+    // Otherwise, component may have stalled work due to input starvation up to
+    // the sum of the delay in the pipeline.
+    size_t n = mInputMetEos ? 0 : mDelay;
+    return mPipelineWatcher.lock()->elapsed(PipelineWatcher::Clock::now(), n);
 }
 
 void CCodecBufferChannel::setMetaMode(MetaMode mode) {

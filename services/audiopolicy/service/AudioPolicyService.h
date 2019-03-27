@@ -74,16 +74,17 @@ public:
     virtual status_t setForceUse(audio_policy_force_use_t usage, audio_policy_forced_cfg_t config);
     virtual audio_policy_forced_cfg_t getForceUse(audio_policy_force_use_t usage);
     virtual audio_io_handle_t getOutput(audio_stream_type_t stream);
-    virtual status_t getOutputForAttr(const audio_attributes_t *attr,
-                                      audio_io_handle_t *output,
-                                      audio_session_t session,
-                                      audio_stream_type_t *stream,
-                                      pid_t pid,
-                                      uid_t uid,
-                                      const audio_config_t *config,
-                                      audio_output_flags_t flags,
-                                      audio_port_handle_t *selectedDeviceId,
-                                      audio_port_handle_t *portId);
+    status_t getOutputForAttr(const audio_attributes_t *attr,
+                              audio_io_handle_t *output,
+                              audio_session_t session,
+                              audio_stream_type_t *stream,
+                              pid_t pid,
+                              uid_t uid,
+                              const audio_config_t *config,
+                              audio_output_flags_t flags,
+                              audio_port_handle_t *selectedDeviceId,
+                              audio_port_handle_t *portId,
+                              std::vector<audio_io_handle_t> *secondaryOutputs) override;
     virtual status_t startOutput(audio_port_handle_t portId);
     virtual status_t stopOutput(audio_port_handle_t portId);
     virtual void releaseOutput(audio_port_handle_t portId);
@@ -109,6 +110,17 @@ public:
     virtual status_t getStreamVolumeIndex(audio_stream_type_t stream,
                                           int *index,
                                           audio_devices_t device);
+
+    virtual status_t setVolumeIndexForAttributes(const audio_attributes_t &attr,
+                                                 int index,
+                                                 audio_devices_t device);
+    virtual status_t getVolumeIndexForAttributes(const audio_attributes_t &attr,
+                                                 int &index,
+                                                 audio_devices_t device);
+    virtual status_t getMinVolumeIndexForAttributes(const audio_attributes_t &attr,
+                                                    int &index);
+    virtual status_t getMaxVolumeIndexForAttributes(const audio_attributes_t &attr,
+                                                    int &index);
 
     virtual uint32_t getStrategyForStream(audio_stream_type_t stream);
     virtual audio_devices_t getDevicesForStream(audio_stream_type_t stream);
@@ -191,6 +203,8 @@ public:
 
     virtual void setAudioPortCallbacksEnabled(bool enabled);
 
+    virtual void setAudioVolumeGroupCallbacksEnabled(bool enabled);
+
     virtual status_t acquireSoundTriggerSession(audio_session_t *session,
                                            audio_io_handle_t *ioHandle,
                                            audio_devices_t *device);
@@ -231,7 +245,13 @@ public:
 
             status_t doStartOutput(audio_port_handle_t portId);
     virtual status_t listAudioProductStrategies(AudioProductStrategyVector &strategies);
-    virtual product_strategy_t getProductStrategyFromAudioAttributes(const AudioAttributes &aa);
+    virtual status_t getProductStrategyFromAudioAttributes(const AudioAttributes &aa,
+                                                           product_strategy_t &productStrategy);
+
+    virtual status_t listAudioVolumeGroups(AudioVolumeGroupVector &groups);
+
+    virtual status_t getVolumeGroupFromAudioAttributes(const AudioAttributes &aa,
+                                                       volume_group_t &volumeGroup);
 
             status_t doStopOutput(audio_port_handle_t portId);
             void doReleaseOutput(audio_port_handle_t portId);
@@ -268,6 +288,9 @@ public:
                                                   std::vector<effect_descriptor_t> effects,
                                                   audio_patch_handle_t patchHandle,
                                                   audio_source_t source);
+
+            void onAudioVolumeGroupChanged(volume_group_t group, int flags);
+            void doOnAudioVolumeGroupChanged(volume_group_t group, int flags);
 
 private:
                         AudioPolicyService() ANDROID_API;
@@ -399,6 +422,7 @@ private:
             RELEASE_AUDIO_PATCH,
             UPDATE_AUDIOPORT_LIST,
             UPDATE_AUDIOPATCH_LIST,
+            CHANGED_AUDIOVOLUMEGROUP,
             SET_AUDIOPORT_CONFIG,
             DYN_POLICY_MIX_STATE_UPDATE,
             RECORDING_CONFIGURATION_UPDATE
@@ -431,6 +455,7 @@ private:
                                                          int delayMs);
                     void        updateAudioPortListCommand();
                     void        updateAudioPatchListCommand();
+                    void        changeAudioVolumeGroupCommand(volume_group_t group, int flags);
                     status_t    setAudioPortConfigCommand(const struct audio_port_config *config,
                                                           int delayMs);
                     void        dynamicPolicyMixStateUpdateCommand(const String8& regId,
@@ -515,6 +540,12 @@ private:
         class ReleaseAudioPatchData : public AudioCommandData {
         public:
             audio_patch_handle_t mHandle;
+        };
+
+        class AudioVolumeGroupData : public AudioCommandData {
+        public:
+            volume_group_t mGroup;
+            int mFlags;
         };
 
         class SetAudioPortConfigData : public AudioCommandData {
@@ -649,6 +680,8 @@ private:
                                                     audio_patch_handle_t patchHandle,
                                                     audio_source_t source);
 
+        virtual void onAudioVolumeGroupChanged(volume_group_t group, int flags);
+
         virtual audio_unique_id_t newAudioUniqueId(audio_unique_id_use_t use);
 
      private:
@@ -667,6 +700,7 @@ private:
                             void      onAudioPatchListUpdate();
                             void      onDynamicPolicyMixStateUpdate(const String8& regId,
                                                                     int32_t state);
+                            void      onAudioVolumeGroupChanged(volume_group_t group, int flags);
                             void      onRecordingConfigurationUpdate(
                                                     int event,
                                                     const record_client_info_t *clientInfo,
@@ -677,6 +711,7 @@ private:
                                                     audio_patch_handle_t patchHandle,
                                                     audio_source_t source);
                             void      setAudioPortCallbacksEnabled(bool enabled);
+                            void setAudioVolumeGroupCallbacksEnabled(bool enabled);
 
                             uid_t uid() {
                                 return mUid;
@@ -694,6 +729,7 @@ private:
         const pid_t                         mPid;
         const sp<IAudioPolicyServiceClient> mAudioPolicyServiceClient;
               bool                          mAudioPortCallbacksEnabled;
+              bool                          mAudioVolumeGroupCallbacksEnabled;
     };
 
     class AudioClient : public virtual RefBase {
