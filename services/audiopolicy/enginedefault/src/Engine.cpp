@@ -154,16 +154,16 @@ audio_devices_t Engine::getDeviceForStrategyInt(legacy_strategy strategy,
         break;
 
     case STRATEGY_SONIFICATION_RESPECTFUL:
-        if (isInCall() || outputs.isActiveLocally(streamToVolumeSource(AUDIO_STREAM_VOICE_CALL))) {
+        if (isInCall() || outputs.isActiveLocally(toVolumeSource(AUDIO_STREAM_VOICE_CALL))) {
             device = getDeviceForStrategyInt(
                     STRATEGY_SONIFICATION, availableOutputDevices, availableInputDevices, outputs,
                     outputDeviceTypesToIgnore);
         } else {
             bool media_active_locally =
-                    outputs.isActiveLocally(streamToVolumeSource(AUDIO_STREAM_MUSIC),
+                    outputs.isActiveLocally(toVolumeSource(AUDIO_STREAM_MUSIC),
                                             SONIFICATION_RESPECTFUL_AFTER_MUSIC_DELAY)
                     || outputs.isActiveLocally(
-                        streamToVolumeSource(AUDIO_STREAM_ACCESSIBILITY),
+                        toVolumeSource(AUDIO_STREAM_ACCESSIBILITY),
                         SONIFICATION_RESPECTFUL_AFTER_MUSIC_DELAY);
             // routing is same as media without the "remote" device
             device = getDeviceForStrategyInt(STRATEGY_MEDIA,
@@ -255,6 +255,10 @@ audio_devices_t Engine::getDeviceForStrategyInt(legacy_strategy strategy,
             if (device) break;
             device = availableOutputDevicesType & AUDIO_DEVICE_OUT_USB_DEVICE;
             if (device) break;
+            if (getDpConnAndAllowedForVoice() && isInCall()) {
+                device = availableOutputDevicesType & AUDIO_DEVICE_OUT_AUX_DIGITAL;
+                if (device) break;
+            }
             if (!isInCall()) {
                 device = availableOutputDevicesType & AUDIO_DEVICE_OUT_USB_ACCESSORY;
                 if (device) break;
@@ -298,7 +302,7 @@ audio_devices_t Engine::getDeviceForStrategyInt(legacy_strategy strategy,
 
         // If incall, just select the STRATEGY_PHONE device
         if (isInCall() ||
-                outputs.isActiveLocally(streamToVolumeSource(AUDIO_STREAM_VOICE_CALL))) {
+                outputs.isActiveLocally(toVolumeSource(AUDIO_STREAM_VOICE_CALL))) {
             device = getDeviceForStrategyInt(
                     STRATEGY_PHONE, availableOutputDevices, availableInputDevices, outputs,
                     outputDeviceTypesToIgnore);
@@ -353,6 +357,15 @@ audio_devices_t Engine::getDeviceForStrategyInt(legacy_strategy strategy,
                 }
             }
         }
+        // if display-port is connected and being used in voice usecase,
+        // play ringtone over speaker and display-port
+        if ((strategy == STRATEGY_SONIFICATION) && getDpConnAndAllowedForVoice()) {
+             uint32_t device2 = availableOutputDevicesType & AUDIO_DEVICE_OUT_AUX_DIGITAL;
+             if (device2 != AUDIO_DEVICE_NONE) {
+                 device |= device2;
+                 break;
+             }
+        }
         // The second device used for sonification is the same as the device used by media strategy
         FALLTHROUGH_INTENDED;
 
@@ -371,8 +384,8 @@ audio_devices_t Engine::getDeviceForStrategyInt(legacy_strategy strategy,
             }
             availableOutputDevices =
                     availableOutputDevices.getDevicesFromTypeMask(availableOutputDevicesType);
-            if (outputs.isActive(streamToVolumeSource(AUDIO_STREAM_RING)) ||
-                    outputs.isActive(streamToVolumeSource(AUDIO_STREAM_ALARM))) {
+            if (outputs.isActive(toVolumeSource(AUDIO_STREAM_RING)) ||
+                    outputs.isActive(toVolumeSource(AUDIO_STREAM_ALARM))) {
                 return getDeviceForStrategyInt(
                     STRATEGY_SONIFICATION, availableOutputDevices, availableInputDevices, outputs,
                     outputDeviceTypesToIgnore);
@@ -517,8 +530,8 @@ audio_devices_t Engine::getDeviceForStrategyInt(legacy_strategy strategy,
 
 audio_devices_t Engine::getDeviceForInputSource(audio_source_t inputSource) const
 {
-    const DeviceVector &availableOutputDevices = getApmObserver()->getAvailableOutputDevices();
-    const DeviceVector &availableInputDevices = getApmObserver()->getAvailableInputDevices();
+    const DeviceVector availableOutputDevices = getApmObserver()->getAvailableOutputDevices();
+    const DeviceVector availableInputDevices = getApmObserver()->getAvailableInputDevices();
     const SwAudioOutputCollection &outputs = getApmObserver()->getOutputs();
     audio_devices_t availableDeviceTypes = availableInputDevices.types() & ~AUDIO_DEVICE_BIT_IN;
 
@@ -725,7 +738,7 @@ DeviceVector Engine::getOutputDevicesForAttributes(const audio_attributes_t &att
         return DeviceVector(preferredDevice);
     }
     product_strategy_t strategy = getProductStrategyForAttributes(attributes);
-    const DeviceVector &availableOutputDevices = getApmObserver()->getAvailableOutputDevices();
+    const DeviceVector availableOutputDevices = getApmObserver()->getAvailableOutputDevices();
     const SwAudioOutputCollection &outputs = getApmObserver()->getOutputs();
     //
     // @TODO: what is the priority of explicit routing? Shall it be considered first as it used to
@@ -748,10 +761,10 @@ DeviceVector Engine::getOutputDevicesForStream(audio_stream_type_t stream, bool 
 }
 
 sp<DeviceDescriptor> Engine::getInputDeviceForAttributes(const audio_attributes_t &attr,
-                                                         AudioMix **mix) const
+                                                         sp<AudioPolicyMix> *mix) const
 {
     const auto &policyMixes = getApmObserver()->getAudioPolicyMixCollection();
-    const auto &availableInputDevices = getApmObserver()->getAvailableInputDevices();
+    const auto availableInputDevices = getApmObserver()->getAvailableInputDevices();
     const auto &inputs = getApmObserver()->getInputs();
     std::string address;
 

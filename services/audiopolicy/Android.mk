@@ -62,10 +62,6 @@ ifneq ($(USE_XML_AUDIO_POLICY_CONF), 1)
 $(error Configurable policy does not support legacy conf file)
 endif #ifneq ($(USE_XML_AUDIO_POLICY_CONF), 1)
 
-LOCAL_REQUIRED_MODULES := \
-    parameter-framework.policy \
-    audio_policy_criteria.conf \
-
 LOCAL_C_INCLUDES += frameworks/av/services/audiopolicy/engineconfigurable/include
 LOCAL_C_INCLUDES += frameworks/av/include
 
@@ -90,7 +86,7 @@ LOCAL_STATIC_LIBRARIES := \
 LOCAL_SHARED_LIBRARIES += libmedia_helper
 LOCAL_SHARED_LIBRARIES += libmediametrics
 
-LOCAL_SHARED_LIBRARIES += libhidlbase libxml2
+LOCAL_SHARED_LIBRARIES += libbinder libhidlbase libxml2
 
 ifeq ($(USE_XML_AUDIO_POLICY_CONF), 1)
 LOCAL_CFLAGS += -DUSE_XML_AUDIO_POLICY_CONF

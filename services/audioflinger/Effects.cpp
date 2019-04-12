@@ -54,6 +54,9 @@
 
 namespace android {
 
+static const effect_uuid_t IID_VISUALIZER = {0x1d0a1a53, 0x7d5d, 0x48f2, 0x8e71, {0x27,
+                                             0xfb, 0xd1, 0x0d, 0x84, 0x2c}};
+
 // ----------------------------------------------------------------------------
 //  EffectModule implementation
 // ----------------------------------------------------------------------------
@@ -1607,6 +1610,12 @@ status_t AudioFlinger::EffectHandle::enable()
                     thread->mAudioFlinger->onNonOffloadableGlobalEffectEnable();
                 }
             }
+            if ((thread->type() == ThreadBase::OFFLOAD) && (AudioSystem::getDeviceConnectionState(AUDIO_DEVICE_OUT_PROXY, "")
+                == AUDIO_POLICY_DEVICE_STATE_AVAILABLE) && (memcmp (&effect->mDescriptor.uuid, &IID_VISUALIZER,
+                sizeof (effect_uuid_t)) == 0)) {
+                PlaybackThread *t = (PlaybackThread *)thread.get();
+                t->invalidateTracks(AUDIO_STREAM_MUSIC);
+            }
         }
     }
     return status;
@@ -2342,13 +2351,10 @@ void AudioFlinger::EffectChain::syncHalEffectsState()
 
 void AudioFlinger::EffectChain::dump(int fd, const Vector<String16>& args)
 {
-    const size_t SIZE = 256;
-    char buffer[SIZE];
     String8 result;
 
-    size_t numEffects = mEffects.size();
-    snprintf(buffer, SIZE, "    %zu effects for session %d\n", numEffects, mSessionId);
-    result.append(buffer);
+    const size_t numEffects = mEffects.size();
+    result.appendFormat("    %zu effects for session %d\n", numEffects, mSessionId);
 
     if (numEffects) {
         bool locked = AudioFlinger::dumpTryLock(mLock);
@@ -2376,6 +2382,8 @@ void AudioFlinger::EffectChain::dump(int fd, const Vector<String16>& args)
         if (locked) {
             mLock.unlock();
         }
+    } else {
+        write(fd, result.string(), result.size());
     }
 }
 

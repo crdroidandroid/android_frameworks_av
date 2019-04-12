@@ -98,7 +98,9 @@ struct AVFactory {
             uint32_t outSampleRate = 0,
             uid_t clientUid = -1,
             pid_t clientPid = -1,
-            audio_port_handle_t selectedDeviceId = AUDIO_PORT_HANDLE_NONE);
+            audio_port_handle_t selectedDeviceId = AUDIO_PORT_HANDLE_NONE,
+            audio_microphone_direction_t selectedMicDirection = MIC_DIRECTION_UNSPECIFIED,
+            float selectedMicFieldDimension = MIC_FIELD_DIMENSION_NORMAL);
     virtual MPEG4Writer *CreateMPEG4Writer(int fd);
 
     // ----- NO TRESSPASSING BEYOND THIS LINE ------
@@ -149,11 +151,14 @@ struct AVUtils {
             const CameraParameters& /*params*/, sp<MetaData> &/*meta*/) {}
     virtual void printFileName(int /*fd*/) {}
 
-    // deprecate this and use one with MediaBufferBase
+    // deprecate these two use one with 3 arguments
     virtual void addDecodingTimesFromBatch(MediaBuffer * /*buf*/,
             List<int64_t> &/*decodeTimeQueue*/) {}
     virtual void addDecodingTimesFromBatch(MediaBufferBase * /*buf*/,
             List<int64_t> &/*decodeTimeQueue*/) {}
+
+    virtual void addDecodingTimesFromBatch(MediaBufferBase * /*buf*/,
+            List<int64_t> &/*decodeTimeQueue*/, int64_t /*time-offset-us*/) {}
 
     virtual bool canDeferRelease(const sp<MetaData> &/*meta*/) { return false; }
     virtual void setDeferRelease(sp<MetaData> &/*meta*/) {}

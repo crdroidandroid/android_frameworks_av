@@ -25,7 +25,6 @@
 
 #include <android_runtime/AndroidRuntime.h>
 #include <android_util_Binder.h>
-#include <binder/IServiceManager.h>
 #include <cutils/properties.h>
 #include <utils/Log.h>
 #include <utils/StrongPointer.h>
@@ -40,6 +39,7 @@
 #include "../../libstagefright/include/HTTPBase.h"
 #include "../../libstagefright/include/NuCachedSource2.h"
 #include "NdkMediaDataSourceCallbacksPriv.h"
+
 
 using namespace android;
 

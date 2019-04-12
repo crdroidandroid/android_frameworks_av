@@ -271,9 +271,12 @@ public:
             if (mNode != nullptr) {
                 OMX_PARAM_U32TYPE ptrGapParam = {};
                 ptrGapParam.nSize = sizeof(OMX_PARAM_U32TYPE);
-                ptrGapParam.nU32 = (config.mMinAdjustedFps > 0)
+                float gap = (config.mMinAdjustedFps > 0)
                         ? c2_min(INT32_MAX + 0., 1e6 / config.mMinAdjustedFps + 0.5)
                         : c2_max(0. - INT32_MAX, -1e6 / config.mFixedAdjustedFps - 0.5);
+                // float -> uint32_t is undefined if the value is negative.
+                // First convert to int32_t to ensure the expected behavior.
+                ptrGapParam.nU32 = int32_t(gap);
                 (void)mNode->setParameter(
                         (OMX_INDEXTYPE)OMX_IndexParamMaxFrameDurationForBitrateControl,
                         &ptrGapParam, sizeof(ptrGapParam));
@@ -282,7 +285,7 @@ public:
 
         // max fps
         // TRICKY: we do not unset max fps to 0 unless using fixed fps
-        if ((config.mMaxFps > 0 || (config.mFixedAdjustedFps > 0 && config.mMaxFps == 0))
+        if ((config.mMaxFps > 0 || (config.mFixedAdjustedFps > 0 && config.mMaxFps == -1))
                 && config.mMaxFps != mConfig.mMaxFps) {
             status_t res = GetStatus(mSource->setMaxFps(config.mMaxFps));
             status << " maxFps=" << config.mMaxFps;
@@ -365,6 +368,10 @@ public:
         // consumer usage
         ALOGD("ISConfig%s", status.str().c_str());
         return err;
+    }
+
+    void onInputBufferDone(c2_cntr64_t index) override {
+        mNode->onInputBufferDone(index);
     }
 
 private:
@@ -739,10 +746,21 @@ void CCodec::configure(const sp<AMessage> &msg) {
                 return BAD_VALUE;
             }
             if ((config->mDomain & Config::IS_ENCODER) && (config->mDomain & Config::IS_VIDEO)) {
-                if (!msg->findInt32(KEY_BIT_RATE, &i32)
-                        && !msg->findFloat(KEY_BIT_RATE, &flt)) {
-                    ALOGD("bitrate is missing, which is required for video encoders.");
-                    return BAD_VALUE;
+                C2Config::bitrate_mode_t mode = C2Config::BITRATE_VARIABLE;
+                if (msg->findInt32(KEY_BITRATE_MODE, &i32)) {
+                    mode = (C2Config::bitrate_mode_t) i32;
+                }
+                if (mode == BITRATE_MODE_CQ) {
+                    if (!msg->findInt32(KEY_QUALITY, &i32)) {
+                        ALOGD("quality is missing, which is required for video encoders in CQ.");
+                        return BAD_VALUE;
+                    }
+                } else {
+                    if (!msg->findInt32(KEY_BIT_RATE, &i32)
+                            && !msg->findFloat(KEY_BIT_RATE, &flt)) {
+                        ALOGD("bitrate is missing, which is required for video encoders.");
+                        return BAD_VALUE;
+                    }
                 }
                 if (!msg->findInt32(KEY_I_FRAME_INTERVAL, &i32)
                         && !msg->findFloat(KEY_I_FRAME_INTERVAL, &flt)) {
@@ -764,13 +782,16 @@ void CCodec::configure(const sp<AMessage> &msg) {
                 if (msg->findInt64(KEY_REPEAT_PREVIOUS_FRAME_AFTER, &value) && value > 0) {
                     config->mISConfig->mMinFps = 1e6 / value;
                 }
-                (void)msg->findFloat(
-                        KEY_MAX_FPS_TO_ENCODER, &config->mISConfig->mMaxFps);
+                if (!msg->findFloat(
+                        KEY_MAX_FPS_TO_ENCODER, &config->mISConfig->mMaxFps)) {
+                    config->mISConfig->mMaxFps = -1;
+                }
                 config->mISConfig->mMinAdjustedFps = 0;
                 config->mISConfig->mFixedAdjustedFps = 0;
                 if (msg->findInt64(KEY_MAX_PTS_GAP_TO_ENCODER, &value)) {
                     if (value < 0 && value >= INT32_MIN) {
                         config->mISConfig->mFixedAdjustedFps = -1e6 / value;
+                        config->mISConfig->mMaxFps = -1;
                     } else if (value > 0 && value <= INT32_MAX) {
                         config->mISConfig->mMinAdjustedFps = 1e6 / value;
                     }
@@ -1566,6 +1587,13 @@ void CCodec::onWorkDone(std::list<std::unique_ptr<C2Work>> &workItems) {
 
 void CCodec::onInputBufferDone(uint64_t frameIndex, size_t arrayIndex) {
     mChannel->onInputBufferDone(frameIndex, arrayIndex);
+    if (arrayIndex == 0) {
+        // We always put no more than one buffer per work, if we use an input surface.
+        Mutexed<Config>::Locked config(mConfig);
+        if (config->mInputSurface) {
+            config->mInputSurface->onInputBufferDone(frameIndex);
+        }
+    }
 }
 
 void CCodec::onMessageReceived(const sp<AMessage> &msg) {
@@ -1697,6 +1725,9 @@ void CCodec::onMessageReceived(const sp<AMessage> &msg) {
                     }
                     ++stream;
                 }
+            }
+            if (config->mInputSurface) {
+                config->mInputSurface->onInputBufferDone(work->input.ordinal.frameIndex);
             }
             mChannel->onWorkDone(
                     std::move(work), changed ? config->mOutputFormat : nullptr,

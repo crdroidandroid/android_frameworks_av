@@ -99,6 +99,34 @@ public:
      */
     virtual size_t numClientBuffers() const = 0;
 
+    void handleImageData(const sp<Codec2Buffer> &buffer) {
+        sp<ABuffer> imageDataCandidate = buffer->getImageData();
+        if (imageDataCandidate == nullptr) {
+            return;
+        }
+        sp<ABuffer> imageData;
+        if (!mFormat->findBuffer("image-data", &imageData)
+                || imageDataCandidate->size() != imageData->size()
+                || memcmp(imageDataCandidate->data(), imageData->data(), imageData->size()) != 0) {
+            ALOGD("[%s] updating image-data", mName);
+            sp<AMessage> newFormat = dupFormat();
+            newFormat->setBuffer("image-data", imageDataCandidate);
+            MediaImage2 *img = (MediaImage2*)imageDataCandidate->data();
+            if (img->mNumPlanes > 0 && img->mType != img->MEDIA_IMAGE_TYPE_UNKNOWN) {
+                int32_t stride = img->mPlane[0].mRowInc;
+                newFormat->setInt32(KEY_STRIDE, stride);
+                ALOGD("[%s] updating stride = %d", mName, stride);
+                if (img->mNumPlanes > 1 && stride > 0) {
+                    int32_t vstride = (img->mPlane[1].mOffset - img->mPlane[0].mOffset) / stride;
+                    newFormat->setInt32(KEY_SLICE_HEIGHT, vstride);
+                    ALOGD("[%s] updating vstride = %d", mName, vstride);
+                }
+            }
+            setFormat(newFormat);
+            buffer->setFormat(newFormat);
+        }
+    }
+
 protected:
     std::string mComponentName; ///< name of component for debugging
     std::string mChannelName; ///< name of channel for debugging
@@ -253,34 +281,6 @@ public:
      */
     void transferSkipCutBuffer(const sp<SkipCutBuffer> &scb) {
         mSkipCutBuffer = scb;
-    }
-
-    void handleImageData(const sp<Codec2Buffer> &buffer) {
-        sp<ABuffer> imageDataCandidate = buffer->getImageData();
-        if (imageDataCandidate == nullptr) {
-            return;
-        }
-        sp<ABuffer> imageData;
-        if (!mFormat->findBuffer("image-data", &imageData)
-                || imageDataCandidate->size() != imageData->size()
-                || memcmp(imageDataCandidate->data(), imageData->data(), imageData->size()) != 0) {
-            ALOGD("[%s] updating image-data", mName);
-            sp<AMessage> newFormat = dupFormat();
-            newFormat->setBuffer("image-data", imageDataCandidate);
-            MediaImage2 *img = (MediaImage2*)imageDataCandidate->data();
-            if (img->mNumPlanes > 0 && img->mType != img->MEDIA_IMAGE_TYPE_UNKNOWN) {
-                int32_t stride = img->mPlane[0].mRowInc;
-                newFormat->setInt32(KEY_STRIDE, stride);
-                ALOGD("[%s] updating stride = %d", mName, stride);
-                if (img->mNumPlanes > 1 && stride > 0) {
-                    int32_t vstride = (img->mPlane[1].mOffset - img->mPlane[0].mOffset) / stride;
-                    newFormat->setInt32(KEY_SLICE_HEIGHT, vstride);
-                    ALOGD("[%s] updating vstride = %d", mName, vstride);
-                }
-            }
-            setFormat(newFormat);
-            buffer->setFormat(newFormat);
-        }
     }
 
 protected:
@@ -783,6 +783,7 @@ public:
         status_t err = mImpl.grabBuffer(index, &c2Buffer);
         if (err == OK) {
             c2Buffer->setFormat(mFormat);
+            handleImageData(c2Buffer);
             *buffer = c2Buffer;
             return true;
         }
@@ -1053,6 +1054,7 @@ public:
             return false;
         }
         *index = mImpl.assignSlot(newBuffer);
+        handleImageData(newBuffer);
         *buffer = newBuffer;
         return true;
     }
@@ -1523,6 +1525,7 @@ void CCodecBufferChannel::ReorderStash::setDepth(uint32_t depth) {
     mPending.splice(mPending.end(), mStash);
     mDepth = depth;
 }
+
 void CCodecBufferChannel::ReorderStash::setKey(C2Config::ordinal_key_t key) {
     mPending.splice(mPending.end(), mStash);
     mKey = key;
@@ -1545,13 +1548,25 @@ void CCodecBufferChannel::ReorderStash::emplace(
         int64_t timestamp,
         int32_t flags,
         const C2WorkOrdinalStruct &ordinal) {
-    auto it = mStash.begin();
-    for (; it != mStash.end(); ++it) {
-        if (less(ordinal, it->ordinal)) {
-            break;
+    bool eos = flags & MediaCodec::BUFFER_FLAG_EOS;
+    if (!buffer && eos) {
+        // TRICKY: we may be violating ordering of the stash here. Because we
+        // don't expect any more emplace() calls after this, the ordering should
+        // not matter.
+        mStash.emplace_back(buffer, timestamp, flags, ordinal);
+    } else {
+        flags = flags & ~MediaCodec::BUFFER_FLAG_EOS;
+        auto it = mStash.begin();
+        for (; it != mStash.end(); ++it) {
+            if (less(ordinal, it->ordinal)) {
+                break;
+            }
+        }
+        mStash.emplace(it, buffer, timestamp, flags, ordinal);
+        if (eos) {
+            mStash.back().flags = mStash.back().flags | MediaCodec::BUFFER_FLAG_EOS;
         }
     }
-    mStash.emplace(it, buffer, timestamp, flags, ordinal);
     while (!mStash.empty() && mStash.size() > mDepth) {
         mPending.push_back(mStash.front());
         mStash.pop_front();
@@ -2481,6 +2496,7 @@ status_t CCodecBufferChannel::requestInitialInputBuffers() {
             bool post = true;
             if (!configs->empty()) {
                 sp<ABuffer> config = configs->front();
+                configs->pop_front();
                 if (buffer->capacity() >= config->size()) {
                     memcpy(buffer->base(), config->data(), config->size());
                     buffer->setRange(0, config->size());
@@ -2591,9 +2607,9 @@ bool CCodecBufferChannel::handleWork(
         return false;
     }
 
-    if (work->worklets.size() != 1u
+    if (mInputSurface == nullptr && (work->worklets.size() != 1u
             || !work->worklets.front()
-            || !(work->worklets.front()->output.flags & C2FrameData::FLAG_INCOMPLETE)) {
+            || !(work->worklets.front()->output.flags & C2FrameData::FLAG_INCOMPLETE))) {
         mPipelineWatcher.lock()->onWorkDone(work->input.ordinal.frameIndex.peeku());
     }
 
@@ -2707,6 +2723,10 @@ bool CCodecBufferChannel::handleWork(
     c2_cntr64_t timestamp =
         worklet->output.ordinal.timestamp + work->input.ordinal.customOrdinal
                 - work->input.ordinal.timestamp;
+    if (mInputSurface != nullptr) {
+        // When using input surface we need to restore the original input timestamp.
+        timestamp = work->input.ordinal.customOrdinal;
+    }
     ALOGV("[%s] onWorkDone: input %lld, codec %lld => output %lld => %lld",
           mName,
           work->input.ordinal.customOrdinal.peekll(),
@@ -2808,8 +2828,9 @@ void CCodecBufferChannel::sendOutputBuffers() {
 
         outBuffer->meta()->setInt64("timeUs", entry.timestamp);
         outBuffer->meta()->setInt32("flags", entry.flags);
-        ALOGV("[%s] sendOutputBuffers: out buffer index = %zu [%p] => %p + %zu",
-                mName, index, outBuffer.get(), outBuffer->data(), outBuffer->size());
+        ALOGV("[%s] sendOutputBuffers: out buffer index = %zu [%p] => %p + %zu (%lld)",
+                mName, index, outBuffer.get(), outBuffer->data(), outBuffer->size(),
+                (long long)entry.timestamp);
         mCallback->onOutputBufferAvailable(index, outBuffer);
     }
 }

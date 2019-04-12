@@ -14,6 +14,9 @@ cc_library_headers {
 cc_library_shared {
     name: "libcodec2_vndk",
     vendor_available: true,
+    vndk: {
+        enabled: true,
+    },
 
     srcs: [
         "C2AllocatorIon.cpp",
@@ -35,6 +38,7 @@ cc_library_shared {
 
     export_shared_lib_headers: [
         "libbase",
+        "libgui",
         "android.hardware.media.bufferpool@2.0",
     ],
 
@@ -49,13 +53,14 @@ cc_library_shared {
 
     shared_libs: [
         "android.hardware.graphics.allocator@2.0",
-        "android.hardware.graphics.bufferqueue@1.0",
+        "android.hardware.graphics.bufferqueue@2.0",
         "android.hardware.graphics.mapper@2.0",
         "android.hardware.media.bufferpool@2.0",
         "libbase",
         "libbinder",
         "libcutils",
         "libdl",
+        "libgui",
         "libhardware",
         "libhidlbase",
         "libion",

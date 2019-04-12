@@ -40,7 +40,8 @@
 // V0.4.01 = add -h hang option
 //           fix -n option to set output buffer for -tm
 //           plot first glitch
-#define APP_VERSION             "0.4.01"
+// V0.4.02 = allow -n0 for minimal buffer size
+#define APP_VERSION             "0.4.02"
 
 // Tag for machine readable results as property = value pairs
 #define RESULT_TAG              "RESULT: "
@@ -295,6 +296,7 @@ static void usage() {
     AAudioArgsParser::usage();
     printf("      -B{frames}        input capacity in frames\n");
     printf("      -C{channels}      number of input channels\n");
+    printf("      -D{deviceId}      input device ID\n");
     printf("      -F{0,1,2}         input format, 1=I16, 2=FLOAT\n");
     printf("      -g{gain}          recirculating loopback gain\n");
     printf("      -h{hangMillis}    occasionally hang in the callback\n");
@@ -393,6 +395,7 @@ int main(int argc, const char **argv)
     AAudioStream         *outputStream               = nullptr;
 
     aaudio_result_t       result = AAUDIO_OK;
+    int32_t               requestedInputDeviceId     = AAUDIO_UNSPECIFIED;
     aaudio_sharing_mode_t requestedInputSharingMode  = AAUDIO_SHARING_MODE_SHARED;
     int                   requestedInputChannelCount = kNumInputChannels;
     aaudio_format_t       requestedInputFormat       = AAUDIO_FORMAT_UNSPECIFIED;
@@ -430,6 +433,9 @@ int main(int argc, const char **argv)
                         break;
                     case 'C':
                         requestedInputChannelCount = atoi(&arg[2]);
+                        break;
+                    case 'D':
+                        requestedInputDeviceId = atoi(&arg[2]);
                         break;
                     case 'F':
                         requestedInputFormat = atoi(&arg[2]);
@@ -529,7 +535,8 @@ int main(int argc, const char **argv)
 
     printf("INPUT  stream ----------------------------------------\n");
     // Use different parameters for the input.
-    argParser.setNumberOfBursts(AAUDIO_UNSPECIFIED);
+    argParser.setDeviceId(requestedInputDeviceId);
+    argParser.setNumberOfBursts(AAudioParameters::kDefaultNumberOfBursts);
     argParser.setFormat(requestedInputFormat);
     argParser.setPerformanceMode(inputPerformanceLevel);
     argParser.setChannelCount(requestedInputChannelCount);

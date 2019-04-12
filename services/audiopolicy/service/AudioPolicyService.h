@@ -31,6 +31,7 @@
 #include <media/ToneGenerator.h>
 #include <media/AudioEffect.h>
 #include <media/AudioPolicy.h>
+#include <mediautils/ServiceUtilities.h>
 #include "AudioPolicyEffects.h"
 #include "managerdefault/AudioPolicyManager.h"
 #include <android/hardware/BnSensorPrivacyListener.h>
@@ -181,6 +182,7 @@ public:
                                      audio_io_handle_t output,
                                      int delayMs = 0);
     virtual status_t setVoiceVolume(float volume, int delayMs = 0);
+    status_t setAllowedCapturePolicy(uint_t uid, audio_flags_mask_t capturePolicy) override;
     virtual bool isOffloadSupported(const audio_offload_info_t &config);
     virtual bool isDirectOutputSupported(const audio_config_base_t& config,
                                          const audio_attributes_t& attributes);
@@ -327,7 +329,8 @@ private:
 
     void silenceAllRecordings_l();
 
-    static bool isPrivacySensitive(audio_source_t source);
+    static bool isPrivacySensitiveSource(audio_source_t source);
+    static bool isVirtualSource(audio_source_t source);
 
     // If recording we need to make sure the UID is allowed to do that. If the UID is idle
     // then it cannot record and gets buffers with zeros - silence. As soon as the UID
@@ -759,13 +762,17 @@ private:
                 AudioRecordClient(const audio_attributes_t attributes,
                           const audio_io_handle_t io, uid_t uid, pid_t pid,
                           const audio_session_t session, const audio_port_handle_t deviceId,
-                          const String16& opPackageName) :
+                          const String16& opPackageName,
+                          bool canCaptureOutput, bool canCaptureHotword) :
                     AudioClient(attributes, io, uid, pid, session, deviceId),
-                    opPackageName(opPackageName), startTimeNs(0) {}
+                    opPackageName(opPackageName), startTimeNs(0),
+                    canCaptureOutput(canCaptureOutput), canCaptureHotword(canCaptureHotword) {}
                 ~AudioRecordClient() override = default;
 
         const String16 opPackageName;        // client package name
         nsecs_t startTimeNs;
+        const bool canCaptureOutput;
+        const bool canCaptureHotword;
     };
 
     // --- AudioPlaybackClient ---
@@ -827,6 +834,8 @@ private:
 
     DefaultKeyedVector< audio_port_handle_t, sp<AudioRecordClient> >   mAudioRecordClients;
     DefaultKeyedVector< audio_port_handle_t, sp<AudioPlaybackClient> >   mAudioPlaybackClients;
+
+    MediaPackageManager mPackageManager; // To check allowPlaybackCapture
 };
 
 } // namespace android

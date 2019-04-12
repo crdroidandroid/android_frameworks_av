@@ -171,11 +171,7 @@ public:
 
         virtual status_t getMinVolumeIndexForAttributes(const audio_attributes_t &attr, int &index);
 
-        status_t setVolumeGroupIndex(IVolumeCurves &volumeCurves, volume_group_t group, int index,
-                                     audio_devices_t device, const audio_attributes_t attributes);
-
-        status_t setVolumeCurveIndex(volume_group_t volumeGroup,
-                                     int index,
+        status_t setVolumeCurveIndex(int index,
                                      audio_devices_t device,
                                      IVolumeCurves &volumeCurves);
 
@@ -222,6 +218,7 @@ public:
 
         status_t dump(int fd) override;
 
+        status_t setAllowedCapturePolicy(uid_t uid, audio_flags_mask_t capturePolicy) override;
         virtual bool isOffloadSupported(const audio_offload_info_t& offloadInfo);
 
         virtual bool isDirectOutputSupported(const audio_config_base_t& config,
@@ -345,19 +342,43 @@ protected:
         {
             return mInputs;
         }
-        virtual const DeviceVector &getAvailableOutputDevices() const
+        virtual const DeviceVector getAvailableOutputDevices() const
         {
-            return mAvailableOutputDevices;
+            return mAvailableOutputDevices.filterForEngine();
         }
-        virtual const DeviceVector &getAvailableInputDevices() const
+        virtual const DeviceVector getAvailableInputDevices() const
         {
-            return mAvailableInputDevices;
+            return mAvailableInputDevices.filterForEngine();
         }
         virtual const sp<DeviceDescriptor> &getDefaultOutputDevice() const
         {
             return mDefaultOutputDevice;
         }
 
+        std::vector<volume_group_t> getVolumeGroups() const
+        {
+            return mEngine->getVolumeGroups();
+        }
+
+        VolumeSource toVolumeSource(volume_group_t volumeGroup) const
+        {
+            return static_cast<VolumeSource>(volumeGroup);
+        }
+        VolumeSource toVolumeSource(const audio_attributes_t &attributes) const
+        {
+            return toVolumeSource(mEngine->getVolumeGroupForAttributes(attributes));
+        }
+        VolumeSource toVolumeSource(audio_stream_type_t stream) const
+        {
+            return toVolumeSource(mEngine->getVolumeGroupForStreamType(stream));
+        }
+        IVolumeCurves &getVolumeCurves(VolumeSource volumeSource)
+        {
+          auto *curves = mEngine->getVolumeCurvesForVolumeGroup(
+              static_cast<volume_group_t>(volumeSource));
+          ALOG_ASSERT(curves != nullptr, "No curves for volume source %d", volumeSource);
+          return *curves;
+        }
         IVolumeCurves &getVolumeCurves(const audio_attributes_t &attr)
         {
             auto *curves = mEngine->getVolumeCurvesForAttributes(attr);
@@ -395,16 +416,18 @@ protected:
 
         // compute the actual volume for a given stream according to the requested index and a particular
         // device
-        virtual float computeVolume(audio_stream_type_t stream,
+        virtual float computeVolume(IVolumeCurves &curves,
+                                    VolumeSource volumeSource,
                                     int index,
                                     audio_devices_t device);
 
         // rescale volume index from srcStream within range of dstStream
         int rescaleVolumeIndex(int srcIndex,
-                               audio_stream_type_t srcStream,
-                               audio_stream_type_t dstStream);
+                               VolumeSource fromVolumeSource,
+                               VolumeSource toVolumeSource);
         // check that volume change is permitted, compute and send new volume to audio hardware
-        virtual status_t checkAndSetVolume(audio_stream_type_t stream, int index,
+        virtual status_t checkAndSetVolume(IVolumeCurves &curves,
+                                           VolumeSource volumeSource, int index,
                                            const sp<AudioOutputDescriptor>& outputDesc,
                                            audio_devices_t device,
                                            int delayMs = 0, bool force = false);
@@ -428,12 +451,20 @@ protected:
                              int delayMs = 0,
                              audio_devices_t device = AUDIO_DEVICE_NONE);
 
-        // Mute or unmute the stream on the specified output
-        void setStreamMute(audio_stream_type_t stream,
-                           bool on,
-                           const sp<AudioOutputDescriptor>& outputDesc,
-                           int delayMs = 0,
-                           audio_devices_t device = (audio_devices_t)0);
+        /**
+         * @brief setVolumeSourceMute Mute or unmute the volume source on the specified output
+         * @param volumeSource to be muted/unmute (may host legacy streams or by extension set of
+         * audio attributes)
+         * @param on true to mute, false to umute
+         * @param outputDesc on which the client following the volume group shall be muted/umuted
+         * @param delayMs
+         * @param device
+         */
+        void setVolumeSourceMute(VolumeSource volumeSource,
+                                 bool on,
+                                 const sp<AudioOutputDescriptor>& outputDesc,
+                                 int delayMs = 0,
+                                 audio_devices_t device = AUDIO_DEVICE_NONE);
 
         audio_mode_t getPhoneState();
 
@@ -476,7 +507,7 @@ protected:
          * Must be called before updateDevicesAndOutputs()
          * @param attr to be considered
          */
-        void checkOutputForAttributes(const audio_attributes_t &attr);
+        virtual void checkOutputForAttributes(const audio_attributes_t &attr);
 
         bool followsSameRouting(const audio_attributes_t &lAttr,
                                 const audio_attributes_t &rAttr) const;
@@ -724,6 +755,8 @@ protected:
         // Surround formats that are enabled manually. Taken into account when
         // "encoded surround" is forced into "manual" mode.
         std::unordered_set<audio_format_t> mManualSurroundFormats;
+
+        std::unordered_map<uid_t, audio_flags_mask_t> mAllowedCapturePolicies;
 protected:
         // Add or remove AC3 DTS encodings based on user preferences.
         void modifySurroundFormats(const sp<DeviceDescriptor>& devDesc, FormatVector *formatsPtr);
@@ -779,7 +812,8 @@ protected:
                 audio_session_t session,
                 audio_stream_type_t stream,
                 const audio_config_t *config,
-                audio_output_flags_t *flags);
+                audio_output_flags_t *flags,
+                bool forceMutingHaptic = false);
 
         /**
          * @brief getInputForDevice selects an input handle for a given input device and
@@ -798,7 +832,7 @@ protected:
                 const audio_attributes_t &attributes,
                 const audio_config_base_t *config,
                 audio_input_flags_t flags,
-                AudioMix *policyMix);
+                const sp<AudioPolicyMix> &policyMix);
 
         // event is one of STARTING_OUTPUT, STARTING_BEACON, STOPPING_OUTPUT, STOPPING_BEACON
         // returns 0 if no mute/unmute event happened, the largest latency of the device where
@@ -813,6 +847,10 @@ protected:
                                              const char *device_address,
                                              const char *device_name,
                                              audio_format_t encodedFormat);
+
+        void setEngineDeviceConnectionState(const sp<DeviceDescriptor> device,
+                                      audio_policy_dev_state_t state);
+
         void updateMono(audio_io_handle_t output) {
             AudioParameter param;
             param.addInt(String8(AudioParameter::keyMonoOutput), (int)mMasterMono);

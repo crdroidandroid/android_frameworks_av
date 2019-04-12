@@ -73,6 +73,8 @@ static const uint8_t kNalUnitTypeSeqParamSet = 0x07;
 static const uint8_t kNalUnitTypePicParamSet = 0x08;
 static const int64_t kInitialDelayTimeUs     = 700000LL;
 static const int64_t kMaxMetadataSize = 0x4000000LL;   // 64MB max per-frame metadata size
+static const int64_t kMaxCttsOffsetTimeUs = 30 * 60 * 1000000LL;  // 30 minutes
+static const size_t kESDSScratchBufferSize = 10;  // kMaxAtomSize in Mpeg4Extractor 64MB
 
 static const char kMetaKey_Version[]    = "com.android.version";
 static const char kMetaKey_Manufacturer[]      = "com.android.manufacturer";
@@ -138,13 +140,6 @@ public:
     void resetInternal();
 
 private:
-    enum {
-        // TODO: need to increase this considering the bug
-        // about camera app not sending video frames continuously?
-        kMaxCttsOffsetTimeUs = 1000000LL,  // 1 second
-        kSampleArraySize = 1000,
-    };
-
     // A helper class to handle faster write box with table entries
     template<class TYPE, unsigned ENTRY_SIZE>
     // ENTRY_SIZE: # of values in each entry
@@ -462,7 +457,7 @@ private:
 };
 
 MPEG4Writer::MPEG4Writer(int fd) {
-    initInternal(fd, true /*isFirstSession*/);
+    initInternal(dup(fd), true /*isFirstSession*/);
 }
 
 MPEG4Writer::~MPEG4Writer() {
@@ -483,7 +478,7 @@ MPEG4Writer::~MPEG4Writer() {
 
 void MPEG4Writer::initInternal(int fd, bool isFirstSession) {
     ALOGV("initInternal");
-    mFd = dup(fd);
+    mFd = fd;
     mNextFd = -1;
     mInitCheck = mFd < 0? NO_INIT: OK;
 
@@ -1051,6 +1046,10 @@ void MPEG4Writer::writeCompositionMatrix(int degrees) {
 void MPEG4Writer::release() {
     close(mFd);
     mFd = -1;
+    if (mNextFd != -1) {
+        close(mNextFd);
+        mNextFd = -1;
+    }
     mInitCheck = NO_INIT;
     mStarted = false;
     free(mInMemoryCache);
@@ -2002,7 +2001,7 @@ status_t MPEG4Writer::setNextFd(int fd) {
         // No need to set a new FD yet.
         return INVALID_OPERATION;
     }
-    mNextFd = fd;
+    mNextFd = dup(fd);
     return OK;
 }
 
@@ -2201,11 +2200,11 @@ void MPEG4Writer::onMessageReceived(const sp<AMessage> &msg) {
     switch (msg->what()) {
         case kWhatSwitch:
         {
-            finishCurrentSession();
             mLock.lock();
             int fd = mNextFd;
             mNextFd = -1;
             mLock.unlock();
+            finishCurrentSession();
             initInternal(fd, false /*isFirstSession*/);
             start(mStartMeta.get());
             mSwitchPending = false;
@@ -2975,14 +2974,18 @@ void MPEG4Writer::Track::updateDriftTime(const sp<MetaData>& meta) {
 }
 
 void MPEG4Writer::Track::dumpTimeStamps() {
-    ALOGE("Dumping %s track's last 10 frames timestamp and frame type ", getTrackType());
-    std::string timeStampString;
-    for (std::list<TimestampDebugHelperEntry>::iterator entry = mTimestampDebugHelper.begin();
-            entry != mTimestampDebugHelper.end(); ++entry) {
-        timeStampString += "(" + std::to_string(entry->pts)+
-                "us, " + std::to_string(entry->dts) + "us " + entry->frameType + ") ";
+    if (!mTimestampDebugHelper.empty()) {
+        std::string timeStampString = "Dumping " + std::string(getTrackType()) + " track's last " +
+                                      std::to_string(mTimestampDebugHelper.size()) +
+                                      " frames' timestamps(pts, dts) and frame type : ";
+        for (const TimestampDebugHelperEntry& entry : mTimestampDebugHelper) {
+            timeStampString += "\n(" + std::to_string(entry.pts) + "us, " +
+                               std::to_string(entry.dts) + "us " + entry.frameType + ") ";
+        }
+        ALOGE("%s", timeStampString.c_str());
+    } else {
+        ALOGE("0 frames to dump timeStamps in %s track ", getTrackType());
     }
-    ALOGE("%s", timeStampString.c_str());
 }
 
 status_t MPEG4Writer::Track::threadEntry() {
@@ -3940,22 +3943,52 @@ void MPEG4Writer::Track::writeAudioFourCCBox() {
     mOwner->endBox();
 }
 
+static void generateEsdsSize(size_t dataLength, size_t* sizeGenerated, uint8_t* buffer) {
+    size_t offset = 0, cur = 0;
+    size_t more = 0x00;
+    *sizeGenerated = 0;
+    /* Start with the LSB(7 bits) of dataLength and build the byte sequence upto MSB.
+     * Continuation flag(most significant bit) will be set on the first N-1 bytes.
+     */
+    do {
+        buffer[cur++] = (dataLength & 0x7f) | more;
+        dataLength >>= 7;
+        more = 0x80;
+        ++(*sizeGenerated);
+    } while (dataLength > 0u);
+    --cur;
+    // Reverse the newly formed byte sequence.
+    while (cur > offset) {
+        uint8_t tmp = buffer[cur];
+        buffer[cur--] = buffer[offset];
+        buffer[offset++] = tmp;
+    }
+}
+
 void MPEG4Writer::Track::writeMp4aEsdsBox() {
-    mOwner->beginBox("esds");
     CHECK(mCodecSpecificData);
     CHECK_GT(mCodecSpecificDataSize, 0u);
 
-    // Make sure all sizes encode to a single byte.
-    CHECK_LT(mCodecSpecificDataSize + 23, 128u);
+    uint8_t sizeESDBuffer[kESDSScratchBufferSize];
+    uint8_t sizeDCDBuffer[kESDSScratchBufferSize];
+    uint8_t sizeDSIBuffer[kESDSScratchBufferSize];
+    size_t sizeESD = 0;
+    size_t sizeDCD = 0;
+    size_t sizeDSI = 0;
+    generateEsdsSize(mCodecSpecificDataSize, &sizeDSI, sizeDSIBuffer);
+    generateEsdsSize(mCodecSpecificDataSize + sizeDSI + 14, &sizeDCD, sizeDCDBuffer);
+    generateEsdsSize(mCodecSpecificDataSize + sizeDSI + sizeDCD + 21, &sizeESD, sizeESDBuffer);
+
+    mOwner->beginBox("esds");
 
     mOwner->writeInt32(0);     // version=0, flags=0
     mOwner->writeInt8(0x03);   // ES_DescrTag
-    mOwner->writeInt8(23 + mCodecSpecificDataSize);
+    mOwner->write(sizeESDBuffer, sizeESD);
     mOwner->writeInt16(0x0000);// ES_ID
     mOwner->writeInt8(0x00);
 
     mOwner->writeInt8(0x04);   // DecoderConfigDescrTag
-    mOwner->writeInt8(15 + mCodecSpecificDataSize);
+    mOwner->write(sizeDCDBuffer, sizeDCD);
     mOwner->writeInt8(0x40);   // objectTypeIndication ISO/IEC 14492-2
     mOwner->writeInt8(0x15);   // streamType AudioStream
 
@@ -3970,7 +4003,7 @@ void MPEG4Writer::Track::writeMp4aEsdsBox() {
     mOwner->writeInt32(avgBitrate);
 
     mOwner->writeInt8(0x05);   // DecoderSpecificInfoTag
-    mOwner->writeInt8(mCodecSpecificDataSize);
+    mOwner->write(sizeDSIBuffer, sizeDSI);
     mOwner->write(mCodecSpecificData, mCodecSpecificDataSize);
 
     static const uint8_t kData2[] = {
@@ -3987,20 +4020,27 @@ void MPEG4Writer::Track::writeMp4vEsdsBox() {
     CHECK(mCodecSpecificData);
     CHECK_GT(mCodecSpecificDataSize, 0u);
 
-    // Make sure all sizes encode to a single byte.
-    CHECK_LT(23 + mCodecSpecificDataSize, 128u);
+    uint8_t sizeESDBuffer[kESDSScratchBufferSize];
+    uint8_t sizeDCDBuffer[kESDSScratchBufferSize];
+    uint8_t sizeDSIBuffer[kESDSScratchBufferSize];
+    size_t sizeESD = 0;
+    size_t sizeDCD = 0;
+    size_t sizeDSI = 0;
+    generateEsdsSize(mCodecSpecificDataSize, &sizeDSI, sizeDSIBuffer);
+    generateEsdsSize(mCodecSpecificDataSize + sizeDSI + 14, &sizeDCD, sizeDCDBuffer);
+    generateEsdsSize(mCodecSpecificDataSize + sizeDSI + sizeDCD + 21, &sizeESD, sizeESDBuffer);
 
     mOwner->beginBox("esds");
 
     mOwner->writeInt32(0);    // version=0, flags=0
 
     mOwner->writeInt8(0x03);  // ES_DescrTag
-    mOwner->writeInt8(23 + mCodecSpecificDataSize);
+    mOwner->write(sizeESDBuffer, sizeESD);
     mOwner->writeInt16(0x0000);  // ES_ID
     mOwner->writeInt8(0x1f);
 
     mOwner->writeInt8(0x04);  // DecoderConfigDescrTag
-    mOwner->writeInt8(15 + mCodecSpecificDataSize);
+    mOwner->write(sizeDCDBuffer, sizeDCD);
     mOwner->writeInt8(0x20);  // objectTypeIndication ISO/IEC 14492-2
     mOwner->writeInt8(0x11);  // streamType VisualStream
 
@@ -4018,7 +4058,7 @@ void MPEG4Writer::Track::writeMp4vEsdsBox() {
 
     mOwner->writeInt8(0x05);  // DecoderSpecificInfoTag
 
-    mOwner->writeInt8(mCodecSpecificDataSize);
+    mOwner->write(sizeDSIBuffer, sizeDSI);
     mOwner->write(mCodecSpecificData, mCodecSpecificDataSize);
 
     static const uint8_t kData2[] = {

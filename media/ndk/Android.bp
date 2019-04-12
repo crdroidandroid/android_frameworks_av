@@ -73,6 +73,7 @@ cc_library_shared {
     shared_libs: [
         "android.hardware.graphics.bufferqueue@1.0",
         "android.hidl.token@1.0-utils",
+        "libandroid_runtime_lazy",
         "libbinder",
         "libmedia",
         "libmedia_omx",
@@ -85,7 +86,6 @@ cc_library_shared {
         "libutils",
         "libcutils",
         "libnativewindow",
-        "libandroid_runtime",
         "libbinder",
         "libhidlbase",
         "libgui",
@@ -95,6 +95,10 @@ cc_library_shared {
     ],
 
     export_include_dirs: ["include"],
+
+    export_shared_lib_headers: [
+        "libgui",
+    ],
 
     product_variables: {
         pdk: {

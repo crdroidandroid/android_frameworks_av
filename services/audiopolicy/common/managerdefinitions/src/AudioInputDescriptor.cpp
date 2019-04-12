@@ -22,6 +22,7 @@
 #include <AudioPolicyInterface.h>
 #include "AudioInputDescriptor.h"
 #include "AudioGain.h"
+#include "AudioPolicyMix.h"
 #include "HwModule.h"
 
 namespace android {
@@ -308,16 +309,17 @@ void AudioInputDescriptor::setClientActive(const sp<RecordClientDescriptor>& cli
     const int delta = active ? 1 : -1;
     mGlobalActiveCount += delta;
 
+    sp<AudioPolicyMix> policyMix = mPolicyMix.promote();
     if ((oldGlobalActiveCount == 0) && (mGlobalActiveCount > 0)) {
-        if ((mPolicyMix != NULL) && ((mPolicyMix->mCbFlags & AudioMix::kCbFlagNotifyActivity) != 0))
+        if ((policyMix != NULL) && ((policyMix->mCbFlags & AudioMix::kCbFlagNotifyActivity) != 0))
         {
-            mClientInterface->onDynamicPolicyMixStateUpdate(mPolicyMix->mDeviceAddress,
+            mClientInterface->onDynamicPolicyMixStateUpdate(policyMix->mDeviceAddress,
                                                             MIX_STATE_MIXING);
         }
     } else if ((oldGlobalActiveCount > 0) && (mGlobalActiveCount == 0)) {
-        if ((mPolicyMix != NULL) && ((mPolicyMix->mCbFlags & AudioMix::kCbFlagNotifyActivity) != 0))
+        if ((policyMix != NULL) && ((policyMix->mCbFlags & AudioMix::kCbFlagNotifyActivity) != 0))
         {
-            mClientInterface->onDynamicPolicyMixStateUpdate(mPolicyMix->mDeviceAddress,
+            mClientInterface->onDynamicPolicyMixStateUpdate(policyMix->mDeviceAddress,
                                                             MIX_STATE_IDLE);
         }
     }
@@ -332,6 +334,13 @@ void AudioInputDescriptor::setClientActive(const sp<RecordClientDescriptor>& cli
 void AudioInputDescriptor::updateClientRecordingConfiguration(
     int event, const sp<RecordClientDescriptor>& client)
 {
+    // do not send callback if starting and no device is selected yet to avoid
+    // double callbacks from startInput() before and after the device is selected
+    if (event ==  RECORD_CONFIG_EVENT_START
+            && mPatchHandle == AUDIO_PATCH_HANDLE_NONE) {
+        return;
+    }
+
     const audio_config_base_t sessionConfig = client->config();
     const record_client_info_t recordClientInfo{client->uid(), client->session(),
                                                 client->source(), client->portId(),

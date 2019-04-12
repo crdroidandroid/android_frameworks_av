@@ -34,7 +34,7 @@
 namespace android {
 
 class IOProfile;
-class AudioMix;
+class AudioPolicyMix;
 class AudioPolicyClientInterface;
 
 class ActivityTracking
@@ -98,7 +98,7 @@ public:
         ActivityTracking::dump(dst, spaces);
         dst->appendFormat(", Volume: %.03f, MuteCount: %02d\n", mCurVolumeDb, mMuteCount);
     }
-    void setVolume(float volume) { mCurVolumeDb = volume; }
+    void setVolume(float volumeDb) { mCurVolumeDb = volumeDb; }
     float getVolume() const { return mCurVolumeDb; }
 
 private:
@@ -107,7 +107,7 @@ private:
 };
 /**
  * Note: volume activities shall be indexed by CurvesId if we want to allow multiple
- * curves per volume group, inferring a mute management or volume balancing between HW and SW is
+ * curves per volume source, inferring a mute management or volume balancing between HW and SW is
  * done
  */
 using VolumeActivities = std::map<VolumeSource, VolumeActivity>;
@@ -156,8 +156,8 @@ public:
     virtual bool isDuplicated() const { return false; }
     virtual uint32_t latency() { return 0; }
     virtual bool isFixedVolume(audio_devices_t device);
-    virtual bool setVolume(float volume,
-                           audio_stream_type_t stream,
+    virtual bool setVolume(float volumeDb,
+                           VolumeSource volumeSource, const StreamTypeVector &streams,
                            audio_devices_t device,
                            uint32_t delayMs,
                            bool force);
@@ -219,10 +219,10 @@ public:
     {
         return mVolumeActivities[vs].decMuteCount();
     }
-    void setCurVolume(VolumeSource vs, float volume)
+    void setCurVolume(VolumeSource vs, float volumeDb)
     {
-        // Even if not activity for this group registered, need to create anyway
-        mVolumeActivities[vs].setVolume(volume);
+        // Even if not activity for this source registered, need to create anyway
+        mVolumeActivities[vs].setVolume(volumeDb);
     }
     float getCurVolume(VolumeSource vs) const
     {
@@ -281,8 +281,13 @@ public:
         return mActiveClients;
     }
 
+    bool useHwGain() const
+    {
+        return !devices().isEmpty() ? devices().itemAt(0)->hasGainController() : false;
+    }
+
     DeviceVector mDevices; /**< current devices this output is routed to */
-    AudioMix *mPolicyMix = nullptr;              // non NULL when used by a dynamic policy
+    wp<AudioPolicyMix> mPolicyMix;  // non NULL when used by a dynamic policy
 
 protected:
     const sp<AudioPort> mPort;
@@ -328,8 +333,8 @@ public:
             setClientActive(client, false);
         }
     }
-    virtual bool setVolume(float volume,
-                           audio_stream_type_t stream,
+    virtual bool setVolume(float volumeDb,
+                           VolumeSource volumeSource, const StreamTypeVector &streams,
                            audio_devices_t device,
                            uint32_t delayMs,
                            bool force);
@@ -401,8 +406,8 @@ public:
 
             void dump(String8 *dst) const override;
 
-    virtual bool setVolume(float volume,
-                           audio_stream_type_t stream,
+    virtual bool setVolume(float volumeDb,
+                           VolumeSource volumeSource, const StreamTypeVector &streams,
                            audio_devices_t device,
                            uint32_t delayMs,
                            bool force);
@@ -422,7 +427,7 @@ public:
     bool isActive(VolumeSource volumeSource, uint32_t inPastMs = 0) const;
 
     /**
-     * return whether any source contributing to VolumeSource is playing remotely, override 
+     * return whether any source contributing to VolumeSource is playing remotely, override
      * to change the definition of
      * local/remote playback, used for instance by notification manager to not make
      * media players lose audio focus when not playing locally
@@ -493,8 +498,8 @@ public:
     /**
      * @brief isAnyOutputActive checks if any output is active (aka playing) except the one(s) that
      * hold the volume source to be ignored
-     * @param volumeSourceToIgnore source not considered in the activity detection
-     * @return true if any output is active for any source except the one to be ignored
+     * @param volumeSourceToIgnore source not to be considered in the activity detection
+     * @return true if any output is active for any volume source except the one to be ignored
      */
     bool isAnyOutputActive(VolumeSource volumeSourceToIgnore) const
     {
@@ -523,8 +528,8 @@ public:
     /**
      * @brief isAnyOutputActive checks if any output is active (aka playing) except the one(s) that
      * hold the volume source to be ignored
-     * @param volumeSourceToIgnore source not considered in the activity detection
-     * @return true if any output is active for any source except the one to be ignored
+     * @param volumeSourceToIgnore source not to be considered in the activity detection
+     * @return true if any output is active for any volume source except the one to be ignored
      */
     bool isAnyOutputActive(VolumeSource volumeSourceToIgnore) const
     {
