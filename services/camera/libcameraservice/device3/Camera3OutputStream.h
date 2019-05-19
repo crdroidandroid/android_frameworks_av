@@ -309,6 +309,17 @@ class Camera3OutputStream :
      */
     void onBuffersRemovedLocked(const std::vector<sp<GraphicBuffer>>&);
     status_t detachBufferLocked(sp<GraphicBuffer>* buffer, int* fenceFd);
+    // Call this after each dequeueBuffer/attachBuffer/detachNextBuffer call to get update on
+    // removed buffers. Set notifyBufferManager to false when the call is initiated by buffer
+    // manager so buffer manager doesn't need to be notified.
+    void checkRemovedBuffersLocked(bool notifyBufferManager = true);
+
+    // Check return status of IGBP calls and set abandoned state accordingly
+    void checkRetAndSetAbandonedLocked(status_t res);
+
+    // If the status indicates abandonded stream, only log when state hasn't been updated to
+    // STATE_ABANDONED
+    static bool shouldLogError(status_t res, StreamState state);
 
     static const int32_t kDequeueLatencyBinSize = 5; // in ms
     CameraLatencyHistogram mDequeueBufferLatency;

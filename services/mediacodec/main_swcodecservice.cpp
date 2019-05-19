@@ -19,37 +19,30 @@
 
 // from LOCAL_C_INCLUDES
 #include "minijail.h"
-
 #include <hidl/HidlTransportSupport.h>
-
-#include "MediaCodecUpdateService.h"
 
 using namespace android;
 
+// kSystemSeccompPolicyPath points to the policy for the swcodecs themselves and
+// is part of the updates. kVendorSeccompPolicyPath points to any additional
+// policies that the vendor may need for the device.
 static const char kSystemSeccompPolicyPath[] =
-        "/system/etc/seccomp_policy/mediaswcodec.policy";
+        "/apex/com.android.media.swcodec/etc/seccomp_policy/mediaswcodec.policy";
 static const char kVendorSeccompPolicyPath[] =
         "/vendor/etc/seccomp_policy/mediaswcodec.policy";
 
-// Disable Scudo's mismatch allocation check, as it is being triggered
-// by some third party code.
-extern "C" const char *__scudo_default_options() {
-  return "DeallocationTypeMismatch=false";
-}
+extern "C" void RegisterCodecServices();
 
-int main(int argc __unused, char** /*argv*/)
+int main(int argc __unused, char** argv)
 {
     LOG(INFO) << "media swcodec service starting";
     signal(SIGPIPE, SIG_IGN);
     SetUpMinijail(kSystemSeccompPolicyPath, kVendorSeccompPolicyPath);
+    strcpy(argv[0], "media.swcodec");
 
     ::android::hardware::configureRpcThreadpool(64, false);
 
-#ifdef __LP64__
-    loadFromApex("/apex/com.android.media.swcodec/lib64");
-#else
-    loadFromApex("/apex/com.android.media.swcodec/lib");
-#endif
+    RegisterCodecServices();
 
     ::android::hardware::joinRpcThreadpool();
 }

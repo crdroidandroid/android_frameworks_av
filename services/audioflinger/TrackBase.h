@@ -64,6 +64,7 @@ public:
                                 void *buffer,
                                 size_t bufferSize,
                                 audio_session_t sessionId,
+                                pid_t creatorPid,
                                 uid_t uid,
                                 bool isOut,
                                 alloc_type alloc = ALLOC_CBLK,
@@ -79,6 +80,8 @@ public:
             audio_track_cblk_t* cblk() const { return mCblk; }
             audio_session_t sessionId() const { return mSessionId; }
             uid_t       uid() const { return mUid; }
+            pid_t       creatorPid() const { return mCreatorPid; }
+
             audio_port_handle_t portId() const { return mPortId; }
     virtual status_t    setSyncEvent(const sp<SyncEvent>& event);
 
@@ -93,6 +96,9 @@ public:
 
     virtual void        invalidate() { mIsInvalid = true; }
             bool        isInvalid() const { return mIsInvalid; }
+
+            void        terminate() { mTerminated = true; }
+            bool        isTerminated() const { return mTerminated; }
 
     audio_attributes_t  attributes() const { return mAttr; }
 
@@ -228,14 +234,6 @@ protected:
         return mState == STOPPING_2;
     }
 
-    bool isTerminated() const {
-        return mTerminated;
-    }
-
-    void terminate() {
-        mTerminated = true;
-    }
-
     // Upper case characters are final states.
     // Lower case characters are transitory.
     const char *getTrackStateString() const {
@@ -315,6 +313,8 @@ protected:
     std::atomic<bool>   mServerLatencyFromTrack{}; // latency from track or server timestamp.
     std::atomic<double> mServerLatencyMs{};        // last latency pushed from server thread.
     std::atomic<FrameTime> mKernelFrameTime{};     // last frame time on kernel side.
+    const pid_t         mCreatorPid;  // can be different from mclient->pid() for instance
+                                      // when created by NuPlayer on behalf of a client
 };
 
 // PatchProxyBufferProvider interface is implemented by PatchTrack and PatchRecord.
@@ -337,10 +337,19 @@ public:
                         PatchTrackBase(sp<ClientProxy> proxy, const ThreadBase& thread,
                                        const Timeout& timeout);
             void        setPeerTimeout(std::chrono::nanoseconds timeout);
-            void        setPeerProxy(PatchProxyBufferProvider *proxy) { mPeerProxy = proxy; }
+            template <typename T>
+            void        setPeerProxy(const sp<T> &proxy, bool holdReference) {
+                            mPeerReferenceHold = holdReference ? proxy : nullptr;
+                            mPeerProxy = proxy.get();
+                        }
+            void        clearPeerProxy() {
+                            mPeerReferenceHold.clear();
+                            mPeerProxy = nullptr;
+                        }
 
 protected:
     const sp<ClientProxy>       mProxy;
+    sp<RefBase>                 mPeerReferenceHold;   // keeps mPeerProxy alive during access.
     PatchProxyBufferProvider*   mPeerProxy = nullptr;
     struct timespec             mPeerTimeout{};
 

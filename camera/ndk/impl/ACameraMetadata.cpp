@@ -21,6 +21,7 @@
 #include <utils/Vector.h>
 #include <system/graphics.h>
 #include <media/NdkImage.h>
+#include <private/media/NdkImage.h>
 
 using namespace android;
 
@@ -47,24 +48,14 @@ ACameraMetadata::ACameraMetadata(camera_metadata_t* buffer, ACAMERA_METADATA_TYP
 bool
 ACameraMetadata::isNdkSupportedCapability(int32_t capability) {
     switch (capability) {
-        case ANDROID_REQUEST_AVAILABLE_CAPABILITIES_BACKWARD_COMPATIBLE:
-        case ANDROID_REQUEST_AVAILABLE_CAPABILITIES_MANUAL_SENSOR:
-        case ANDROID_REQUEST_AVAILABLE_CAPABILITIES_MANUAL_POST_PROCESSING:
-        case ANDROID_REQUEST_AVAILABLE_CAPABILITIES_RAW:
-        case ANDROID_REQUEST_AVAILABLE_CAPABILITIES_READ_SENSOR_SETTINGS:
-        case ANDROID_REQUEST_AVAILABLE_CAPABILITIES_BURST_CAPTURE:
-        case ANDROID_REQUEST_AVAILABLE_CAPABILITIES_DEPTH_OUTPUT:
-        case ANDROID_REQUEST_AVAILABLE_CAPABILITIES_LOGICAL_MULTI_CAMERA:
-            return true;
         case ANDROID_REQUEST_AVAILABLE_CAPABILITIES_YUV_REPROCESSING:
         case ANDROID_REQUEST_AVAILABLE_CAPABILITIES_PRIVATE_REPROCESSING:
         case ANDROID_REQUEST_AVAILABLE_CAPABILITIES_CONSTRAINED_HIGH_SPEED_VIDEO:
             return false;
         default:
-            // Newly defined capabilities will be unsupported by default (blacklist)
-            // TODO: Should we do whitelist or blacklist here?
-            ALOGE("%s: Unknonwn capability %d", __FUNCTION__, capability);
-            return false;
+            // Assuming every capability passed to this function is actually a
+            // valid capability.
+            return true;
     }
 }
 
@@ -216,10 +207,9 @@ ACameraMetadata::filterStreamConfigurations() {
     const int STREAM_IS_INPUT_OFFSET = 3;
     camera_metadata_entry entry = mData.find(ANDROID_SCALER_AVAILABLE_STREAM_CONFIGURATIONS);
     camera_metadata_entry depthEntry = mData.find(ANDROID_DEPTH_AVAILABLE_DEPTH_STREAM_CONFIGURATIONS);
-
     if ((entry.count == 0 && depthEntry.count == 0) ||
-        (entry.count != 0 && (entry.count % 4 || entry.type != TYPE_INT32)) ||
-        (depthEntry.count != 0 && (depthEntry.count % 4 || depthEntry.type != TYPE_INT32))) {
+        (entry.count > 0 && (entry.count % 4 || entry.type != TYPE_INT32)) ||
+        (depthEntry.count > 0 && (depthEntry.count % 4 || depthEntry.type != TYPE_INT32))) {
         ALOGE("%s: malformed available stream configuration key! scaler count %zu, type %d depth count %zu, type %d",
                 __FUNCTION__, entry.count, entry.type, depthEntry.count, depthEntry.type);
         return;
@@ -247,7 +237,9 @@ ACameraMetadata::filterStreamConfigurations() {
         filteredStreamConfigs.push_back(isInput);
     }
 
-    mData.update(ANDROID_SCALER_AVAILABLE_STREAM_CONFIGURATIONS, filteredStreamConfigs);
+    if (filteredStreamConfigs.size() > 0) {
+        mData.update(ANDROID_SCALER_AVAILABLE_STREAM_CONFIGURATIONS, filteredStreamConfigs);
+    }
 
     Vector<int32_t> filteredDepthStreamConfigs;
     filteredDepthStreamConfigs.setCapacity(depthEntry.count);
@@ -275,7 +267,11 @@ ACameraMetadata::filterStreamConfigurations() {
         filteredDepthStreamConfigs.push_back(height);
         filteredDepthStreamConfigs.push_back(isInput);
     }
-    mData.update(ANDROID_DEPTH_AVAILABLE_DEPTH_STREAM_CONFIGURATIONS, filteredDepthStreamConfigs);
+
+    if (filteredDepthStreamConfigs.size() > 0) {
+        mData.update(ANDROID_DEPTH_AVAILABLE_DEPTH_STREAM_CONFIGURATIONS,
+                filteredDepthStreamConfigs);
+    }
 
     entry = mData.find(ANDROID_HEIC_AVAILABLE_HEIC_STREAM_CONFIGURATIONS);
     Vector<int32_t> filteredHeicStreamConfigs;

@@ -43,9 +43,6 @@ public:
 
     virtual status_t    readyToRun();
 
-    void dumpBase(int fd, const Vector<String16>& args);
-    void dumpEffectChains(int fd, const Vector<String16>& args);
-
     void clearPowerManager();
 
     // base for record and playback
@@ -106,8 +103,9 @@ public:
 
     class IoConfigEventData : public ConfigEventData {
     public:
-        IoConfigEventData(audio_io_config_event event, pid_t pid) :
-            mEvent(event), mPid(pid) {}
+        IoConfigEventData(audio_io_config_event event, pid_t pid,
+                          audio_port_handle_t portId) :
+            mEvent(event), mPid(pid), mPortId(portId) {}
 
         virtual  void dump(char *buffer, size_t size) {
             snprintf(buffer, size, "IO event: event %d\n", mEvent);
@@ -115,13 +113,14 @@ public:
 
         const audio_io_config_event mEvent;
         const pid_t                 mPid;
+        const audio_port_handle_t   mPortId;
     };
 
     class IoConfigEvent : public ConfigEvent {
     public:
-        IoConfigEvent(audio_io_config_event event, pid_t pid) :
+        IoConfigEvent(audio_io_config_event event, pid_t pid, audio_port_handle_t portId) :
             ConfigEvent(CFG_EVENT_IO) {
-            mData = new IoConfigEventData(event, pid);
+            mData = new IoConfigEventData(event, pid, portId);
         }
         virtual ~IoConfigEvent() {}
     };
@@ -263,13 +262,16 @@ public:
                                                     status_t& status) = 0;
     virtual     status_t    setParameters(const String8& keyValuePairs);
     virtual     String8     getParameters(const String8& keys) = 0;
-    virtual     void        ioConfigChanged(audio_io_config_event event, pid_t pid = 0) = 0;
+    virtual     void        ioConfigChanged(audio_io_config_event event, pid_t pid = 0,
+                                        audio_port_handle_t portId = AUDIO_PORT_HANDLE_NONE) = 0;
                 // sendConfigEvent_l() must be called with ThreadBase::mLock held
                 // Can temporarily release the lock if waiting for a reply from
                 // processConfigEvents_l().
                 status_t    sendConfigEvent_l(sp<ConfigEvent>& event);
-                void        sendIoConfigEvent(audio_io_config_event event, pid_t pid = 0);
-                void        sendIoConfigEvent_l(audio_io_config_event event, pid_t pid = 0);
+                void        sendIoConfigEvent(audio_io_config_event event, pid_t pid = 0,
+                                              audio_port_handle_t portId = AUDIO_PORT_HANDLE_NONE);
+                void        sendIoConfigEvent_l(audio_io_config_event event, pid_t pid = 0,
+                                            audio_port_handle_t portId = AUDIO_PORT_HANDLE_NONE);
                 void        sendPrioConfigEvent(pid_t pid, pid_t tid, int32_t prio, bool forApp);
                 void        sendPrioConfigEvent_l(pid_t pid, pid_t tid, int32_t prio, bool forApp);
                 status_t    sendSetParameterConfigEvent_l(const String8& keyValuePair);
@@ -318,6 +320,7 @@ public:
                 sp<EffectChain> getEffectChain(audio_session_t sessionId);
                 // same as getEffectChain() but must be called with ThreadBase mutex locked
                 sp<EffectChain> getEffectChain_l(audio_session_t sessionId) const;
+                std::vector<int> getEffectIds_l(audio_session_t sessionId);
                 // add an effect chain to the chain list (mEffectChains)
     virtual     status_t addEffectChain_l(const sp<EffectChain>& chain) = 0;
                 // remove an effect chain from the chain list (mEffectChains)
@@ -337,7 +340,8 @@ public:
                 sp<AudioFlinger::EffectModule> getEffect(audio_session_t sessionId, int effectId);
                 sp<AudioFlinger::EffectModule> getEffect_l(audio_session_t sessionId, int effectId);
                 // add and effect module. Also creates the effect chain is none exists for
-                // the effects audio session
+                // the effects audio session. Only called in a context of moving an effect
+                // from one thread to another
                 status_t addEffect_l(const sp< EffectModule>& effect);
                 // remove and effect module. Also removes the effect chain is this was the last
                 // effect
@@ -354,6 +358,27 @@ public:
                 uint32_t hasAudioSession(audio_session_t sessionId) const {
                     Mutex::Autolock _l(mLock);
                     return hasAudioSession_l(sessionId);
+                }
+
+                template <typename T>
+                uint32_t hasAudioSession_l(audio_session_t sessionId, const T& tracks) const {
+                    uint32_t result = 0;
+                    if (getEffectChain_l(sessionId) != 0) {
+                        result = EFFECT_SESSION;
+                    }
+                    for (size_t i = 0; i < tracks.size(); ++i) {
+                        const sp<TrackBase>& track = tracks[i];
+                        if (sessionId == track->sessionId()
+                                && !track->isInvalid()       // not yet removed from tracks.
+                                && !track->isTerminated()) {
+                            result |= TRACK_SESSION;
+                            if (track->isFastTrack()) {
+                                result |= FAST_SESSION;  // caution, only represents first track.
+                            }
+                            break;
+                        }
+                    }
+                    return result;
                 }
 
                 // the value returned by default implementation is not important as the
@@ -397,7 +422,10 @@ public:
 
                 bool                isMsdDevice() const { return mIsMsdDevice; }
 
-    virtual     void                dump(int fd, const Vector<String16>& args) = 0;
+                void                dump(int fd, const Vector<String16>& args);
+
+                // deliver stats to mediametrics.
+                void                sendStatistics(bool force);
 
     mutable     Mutex                   mLock;
 
@@ -445,6 +473,11 @@ protected:
                                     ExtendedTimestamp *timestamp __unused) const {
                                 return INVALID_OPERATION;
                             }
+
+    virtual     void        dumpInternals_l(int fd __unused, const Vector<String16>& args __unused)
+                            { }
+    virtual     void        dumpTracks_l(int fd __unused, const Vector<String16>& args __unused) { }
+
 
     friend class AudioFlinger;      // for mEffectChains
 
@@ -520,6 +553,11 @@ protected:
                 // This should be read under ThreadBase lock (if not on the threadLoop thread).
                 audio_utils::Statistics<double> mIoJitterMs{0.995 /* alpha */};
                 audio_utils::Statistics<double> mProcessTimeMs{0.995 /* alpha */};
+                audio_utils::Statistics<double> mLatencyMs{0.995 /* alpha */};
+
+                // Save the last count when we delivered statistics to mediametrics.
+                int64_t                 mLastRecordedTimestampVerifierN = 0;
+                int64_t                 mLastRecordedTimeNs = 0;  // BOOTTIME to include suspend.
 
                 bool                    mIsMsdDevice = false;
                 // A condition that must be evaluated by the thread loop has changed and
@@ -628,6 +666,10 @@ protected:
                 };
 
                 SimpleLog mLocalLog;
+
+private:
+                void dumpBase_l(int fd, const Vector<String16>& args);
+                void dumpEffectChains_l(int fd, const Vector<String16>& args);
 };
 
 class VolumeInterface {
@@ -680,8 +722,6 @@ public:
                    audio_io_handle_t id, audio_devices_t device, type_t type, bool systemReady);
     virtual             ~PlaybackThread();
 
-                void        dump(int fd, const Vector<String16>& args) override;
-
     // Thread virtuals
     virtual     bool        threadLoop();
 
@@ -724,12 +764,16 @@ protected:
 
     // ThreadBase virtuals
     virtual     void        preExit();
+    virtual     void        onIdleMixer();
 
     virtual     bool        keepWakeLock() const { return true; }
     virtual     void        acquireWakeLock_l() {
                                 ThreadBase::acquireWakeLock_l();
                                 mActiveTracks.updatePowerState(this, true /* force */);
                             }
+
+                void        dumpInternals_l(int fd, const Vector<String16>& args) override;
+                void        dumpTracks_l(int fd, const Vector<String16>& args) override;
 
 public:
 
@@ -764,6 +808,7 @@ public:
                                 const sp<IMemory>& sharedBuffer,
                                 audio_session_t sessionId,
                                 audio_output_flags_t *flags,
+                                pid_t creatorPid,
                                 pid_t tid,
                                 uid_t uid,
                                 status_t *status /*non-NULL*/,
@@ -787,7 +832,8 @@ public:
                                 { return android_atomic_acquire_load(&mSuspended) > 0; }
 
     virtual     String8     getParameters(const String8& keys);
-    virtual     void        ioConfigChanged(audio_io_config_event event, pid_t pid = 0);
+    virtual     void        ioConfigChanged(audio_io_config_event event, pid_t pid = 0,
+                                            audio_port_handle_t portId = AUDIO_PORT_HANDLE_NONE);
                 status_t    getRenderPosition(uint32_t *halFrames, uint32_t *dspFrames);
                 // Consider also removing and passing an explicit mMainBuffer initialization
                 // parameter to AF::PlaybackThread::Track::Track().
@@ -802,7 +848,9 @@ public:
 
                 virtual status_t addEffectChain_l(const sp<EffectChain>& chain);
                 virtual size_t removeEffectChain_l(const sp<EffectChain>& chain);
-                virtual uint32_t hasAudioSession_l(audio_session_t sessionId) const;
+                        uint32_t hasAudioSession_l(audio_session_t sessionId) const override {
+                            return ThreadBase::hasAudioSession_l(sessionId, mTracks);
+                        }
                 virtual uint32_t getStrategyForSession_l(audio_session_t sessionId);
 
 
@@ -978,9 +1026,6 @@ private:
     void        updateMetadata_l() final;
     virtual void sendMetadataToBackend_l(const StreamOutHalInterface::SourceMetadata& metadata);
 
-    virtual void dumpInternals(int fd, const Vector<String16>& args);
-    void        dumpTracks(int fd, const Vector<String16>& args);
-
     // The Tracks class manages tracks added and removed from the Thread.
     template <typename T>
     class Tracks {
@@ -1136,7 +1181,6 @@ public:
 
     virtual     bool        checkForNewParameter_l(const String8& keyValuePair,
                                                    status_t& status);
-    virtual     void        dumpInternals(int fd, const Vector<String16>& args);
 
     virtual     bool        isTrackAllowed_l(
                                     audio_channel_mask_t channelMask, audio_format_t format,
@@ -1155,11 +1199,14 @@ protected:
         }
     }
 
+                void        dumpInternals_l(int fd, const Vector<String16>& args) override;
+
     // threadLoop snippets
     virtual     ssize_t     threadLoop_write();
     virtual     void        threadLoop_standby();
     virtual     void        threadLoop_mix();
     virtual     void        threadLoop_sleepTime();
+    virtual     void        onIdleMixer();
     virtual     uint32_t    correctLatency_l(uint32_t latency) const;
 
     virtual     status_t    createAudioPatch_l(const struct audio_patch *patch,
@@ -1237,8 +1284,6 @@ public:
     virtual     bool        checkForNewParameter_l(const String8& keyValuePair,
                                                    status_t& status);
 
-                void        dumpInternals(int fd, const Vector<String16>& args) override;
-
     virtual     void        flushHw_l();
 
                 void        setMasterBalance(float balance) override;
@@ -1248,6 +1293,8 @@ protected:
     virtual     uint32_t    idleSleepTimeUs() const;
     virtual     uint32_t    suspendSleepTimeUs() const;
     virtual     void        cacheParameters_l();
+
+                void        dumpInternals_l(int fd, const Vector<String16>& args) override;
 
     // threadLoop snippets
     virtual     mixer_state prepareTracks_l(Vector< sp<Track> > *tracksToRemove);
@@ -1373,8 +1420,6 @@ public:
     virtual                 ~DuplicatingThread();
 
     // Thread virtuals
-    virtual     void        dumpInternals(int fd, const Vector<String16>& args) override;
-
                 void        addOutputTrack(MixerThread* thread);
                 void        removeOutputTrack(MixerThread* thread);
                 uint32_t    waitTimeMs() const { return mWaitTimeMs; }
@@ -1383,6 +1428,7 @@ public:
                         const StreamOutHalInterface::SourceMetadata& metadata) override;
 protected:
     virtual     uint32_t    activeSleepTimeUs() const;
+                void        dumpInternals_l(int fd, const Vector<String16>& args) override;
 
 private:
                 bool        outputsReady(const SortedVector< sp<OutputTrack> > &outputTracks);
@@ -1488,9 +1534,6 @@ public:
     void        destroyTrack_l(const sp<RecordTrack>& track);
     void        removeTrack_l(const sp<RecordTrack>& track);
 
-    void        dumpInternals(int fd, const Vector<String16>& args);
-    void        dumpTracks(int fd, const Vector<String16>& args);
-
     // Thread virtuals
     virtual bool        threadLoop();
     virtual void        preExit();
@@ -1513,6 +1556,7 @@ public:
                     size_t *pFrameCount,
                     audio_session_t sessionId,
                     size_t *pNotificationFrameCount,
+                    pid_t creatorPid,
                     uid_t uid,
                     audio_input_flags_t *flags,
                     pid_t tid,
@@ -1527,7 +1571,6 @@ public:
             // return true if the caller should then do it's part of the stopping process
             bool        stop(RecordTrack* recordTrack);
 
-            void        dump(int fd, const Vector<String16>& args) override;
             AudioStreamIn* clearInput();
             virtual sp<StreamHalInterface> stream() const;
 
@@ -1536,7 +1579,8 @@ public:
                                                status_t& status);
     virtual void        cacheParameters_l() {}
     virtual String8     getParameters(const String8& keys);
-    virtual void        ioConfigChanged(audio_io_config_event event, pid_t pid = 0);
+    virtual void        ioConfigChanged(audio_io_config_event event, pid_t pid = 0,
+                                        audio_port_handle_t portId = AUDIO_PORT_HANDLE_NONE);
     virtual status_t    createAudioPatch_l(const struct audio_patch *patch,
                                            audio_patch_handle_t *handle);
     virtual status_t    releaseAudioPatch_l(const audio_patch_handle_t handle);
@@ -1549,7 +1593,9 @@ public:
 
     virtual status_t addEffectChain_l(const sp<EffectChain>& chain);
     virtual size_t removeEffectChain_l(const sp<EffectChain>& chain);
-    virtual uint32_t hasAudioSession_l(audio_session_t sessionId) const;
+            uint32_t hasAudioSession_l(audio_session_t sessionId) const override {
+                         return ThreadBase::hasAudioSession_l(sessionId, mTracks);
+                     }
 
             // Return the set of unique session IDs across all tracks.
             // The keys are the session IDs, and the associated values are meaningless.
@@ -1581,8 +1627,8 @@ public:
 
             status_t    getActiveMicrophones(std::vector<media::MicrophoneInfo>* activeMicrophones);
 
-            status_t    setMicrophoneDirection(audio_microphone_direction_t direction);
-            status_t    setMicrophoneFieldDimension(float zoom);
+            status_t    setPreferredMicrophoneDirection(audio_microphone_direction_t direction);
+            status_t    setPreferredMicrophoneFieldDimension(float zoom);
 
             void        updateMetadata_l() override;
 
@@ -1593,6 +1639,11 @@ public:
                             return audio_is_input_device(
                                     mInDevice & mTimestampCorrectedDevices);
                         }
+
+protected:
+            void        dumpInternals_l(int fd, const Vector<String16>& args) override;
+            void        dumpTracks_l(int fd, const Vector<String16>& args) override;
+
 private:
             // Enter standby if not already in standby, and set mStandby flag
             void    standbyIfNotAlreadyInStandby();
@@ -1710,7 +1761,8 @@ class MmapThread : public ThreadBase
     virtual     bool        checkForNewParameter_l(const String8& keyValuePair,
                                                     status_t& status);
     virtual     String8     getParameters(const String8& keys);
-    virtual     void        ioConfigChanged(audio_io_config_event event, pid_t pid = 0);
+    virtual     void        ioConfigChanged(audio_io_config_event event, pid_t pid = 0,
+                                            audio_port_handle_t portId = AUDIO_PORT_HANDLE_NONE);
                 void        readHalParameters_l();
     virtual     void        cacheParameters_l() {}
     virtual     status_t    createAudioPatch_l(const struct audio_patch *patch,
@@ -1724,7 +1776,10 @@ class MmapThread : public ThreadBase
     virtual     status_t    checkEffectCompatibility_l(const effect_descriptor_t *desc,
                                                                audio_session_t sessionId);
 
-    virtual     uint32_t    hasAudioSession_l(audio_session_t sessionId) const;
+                uint32_t    hasAudioSession_l(audio_session_t sessionId) const override {
+                                // Note: using mActiveTracks as no mTracks here.
+                                return ThreadBase::hasAudioSession_l(sessionId, mActiveTracks);
+                            }
     virtual     status_t    setSyncEvent(const sp<SyncEvent>& event);
     virtual     bool        isValidSyncEvent(const sp<SyncEvent>& event) const;
 
@@ -1739,11 +1794,9 @@ class MmapThread : public ThreadBase
                 // Sets the UID records silence
     virtual     void        setRecordSilenced(uid_t uid __unused, bool silenced __unused) {}
 
-                void        dump(int fd, const Vector<String16>& args) override;
-    virtual     void        dumpInternals(int fd, const Vector<String16>& args);
-                void        dumpTracks(int fd, const Vector<String16>& args);
-
  protected:
+                void        dumpInternals_l(int fd, const Vector<String16>& args) override;
+                void        dumpTracks_l(int fd, const Vector<String16>& args) override;
 
                 audio_attributes_t      mAttr;
                 audio_session_t         mSessionId;
@@ -1793,8 +1846,6 @@ public:
     virtual     void        checkSilentMode_l();
                 void        processVolume_l() override;
 
-    virtual     void        dumpInternals(int fd, const Vector<String16>& args);
-
     virtual     bool        isOutput() const override { return true; }
 
                 void        updateMetadata_l() override;
@@ -1802,6 +1853,7 @@ public:
     virtual     void        toAudioPortConfig(struct audio_port_config *config);
 
 protected:
+                void        dumpInternals_l(int fd, const Vector<String16>& args) override;
 
                 audio_stream_type_t         mStreamType;
                 float                       mMasterVolume;

@@ -179,6 +179,9 @@ public:
             /*out*/
             std::vector<hardware::CameraStatus>* cameraStatuses, bool isVendor = false);
 
+    // Monitored UIDs availability notification
+    void                notifyMonitoredUids();
+
     /////////////////////////////////////////////////////////////////////
     // Client functionality
 
@@ -189,10 +192,10 @@ public:
         NUM_SOUNDS
     };
 
-    void                loadSound();
     void                playSound(sound_kind kind);
-    void                releaseSound();
-
+    void                loadSoundLocked(sound_kind kind);
+    void                decreaseSoundRef();
+    void                increaseSoundRef();
     /**
      * Update the state of a given camera device (open/close/active/idle) with
      * the camera proxy service in the system service
@@ -539,25 +542,32 @@ private:
         void unregisterSelf();
 
         bool isUidActive(uid_t uid, String16 callingPackage);
+        int32_t getProcState(uid_t uid);
 
         void onUidGone(uid_t uid, bool disabled);
         void onUidActive(uid_t uid);
         void onUidIdle(uid_t uid, bool disabled);
-        void onUidStateChanged(uid_t uid __unused, int32_t procState __unused, int64_t procStateSeq __unused) {}
+        void onUidStateChanged(uid_t uid, int32_t procState, int64_t procStateSeq);
 
         void addOverrideUid(uid_t uid, String16 callingPackage, bool active);
         void removeOverrideUid(uid_t uid, String16 callingPackage);
+
+        void registerMonitorUid(uid_t uid);
+        void unregisterMonitorUid(uid_t uid);
 
         // IBinder::DeathRecipient implementation
         virtual void binderDied(const wp<IBinder> &who);
     private:
         bool isUidActiveLocked(uid_t uid, String16 callingPackage);
+        int32_t getProcStateLocked(uid_t uid);
         void updateOverrideUid(uid_t uid, String16 callingPackage, bool active, bool insert);
 
         Mutex mUidLock;
         bool mRegistered;
         wp<CameraService> mService;
         std::unordered_set<uid_t> mActiveUids;
+        // Monitored uid map to cached procState and refCount pair
+        std::unordered_map<uid_t, std::pair<int32_t, size_t>> mMonitoredUids;
         std::unordered_map<uid_t, bool> mOverrideUids;
     }; // class UidPolicy
 
@@ -738,6 +748,11 @@ private:
             const char* reason);
 
     /**
+     * Add an event log message when a client calls setTorchMode succesfully.
+     */
+    void logTorchEvent(const char* cameraId, const char *torchState, int clientPid);
+
+    /**
      * Add an event log message that the current device user has been switched.
      */
     void logUserSwitch(const std::set<userid_t>& oldUserIds,
@@ -790,8 +805,33 @@ private:
 
     sp<CameraProviderManager> mCameraProviderManager;
 
+    class ServiceListener : public virtual IBinder::DeathRecipient {
+        public:
+            ServiceListener(sp<CameraService> parent, sp<hardware::ICameraServiceListener> listener,
+                    int uid) : mParent(parent), mListener(listener), mListenerUid(uid) {}
+
+            status_t initialize() {
+                return IInterface::asBinder(mListener)->linkToDeath(this);
+            }
+
+            virtual void binderDied(const wp<IBinder> &/*who*/) {
+                auto parent = mParent.promote();
+                if (parent.get() != nullptr) {
+                    parent->removeListener(mListener);
+                }
+            }
+
+            int getListenerUid() { return mListenerUid; }
+            sp<hardware::ICameraServiceListener> getListener() { return mListener; }
+
+        private:
+            wp<CameraService> mParent;
+            sp<hardware::ICameraServiceListener> mListener;
+            int mListenerUid;
+    };
+
     // Guarded by mStatusListenerMutex
-    std::vector<std::pair<bool, sp<hardware::ICameraServiceListener>>> mListenerList;
+    std::vector<std::pair<bool, sp<ServiceListener>>> mListenerList;
 
     Mutex       mStatusListenerLock;
 
@@ -896,6 +936,11 @@ private:
     static int32_t mapToInterface(hardware::camera::common::V1_0::TorchModeStatus status);
     static StatusInternal mapToInternal(hardware::camera::common::V1_0::CameraDeviceStatus status);
     static int32_t mapToInterface(StatusInternal status);
+
+    // Guard mCameraServiceProxy
+    static Mutex sProxyMutex;
+    // Cached interface to the camera service proxy in system service
+    static sp<hardware::ICameraServiceProxy> sCameraServiceProxy;
 
     static sp<hardware::ICameraServiceProxy> getCameraServiceProxy();
     static void pingCameraServiceProxy();

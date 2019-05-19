@@ -81,7 +81,7 @@ struct WAVSource : public MediaTrackHelper {
     virtual media_status_t read(
             MediaBufferHelper **buffer, const ReadOptions *options = NULL);
 
-    virtual bool supportNonblockingRead() { return true; }
+    bool supportsNonBlockingRead() override { return false; }
 
 protected:
     virtual ~WAVSource();
@@ -461,7 +461,7 @@ media_status_t WAVSource::read(
     }
 
     // maxBytesToRead may be reduced so that in-place data conversion will fit in buffer size.
-    const size_t bufferSize = buffer->size();
+    const size_t bufferSize = std::min(buffer->size(), kMaxFrameSize);
     size_t maxBytesToRead;
     if (mOutputFloat) { // destination is float at 4 bytes per sample, source may be less.
         maxBytesToRead = (mBitsPerSample / 8) * (bufferSize / 4);

@@ -320,15 +320,21 @@ class Camera3Device :
         status_t popInflightBuffer(int32_t frameNumber, int32_t streamId,
                 /*out*/ buffer_handle_t **buffer);
 
-        // Register a bufId/buffer_handle_t to inflight request buffer
-        status_t pushInflightRequestBuffer(uint64_t bufferId, buffer_handle_t* buf);
+        // Register a bufId (streamId, buffer_handle_t) to inflight request buffer
+        status_t pushInflightRequestBuffer(
+                uint64_t bufferId, buffer_handle_t* buf, int32_t streamId);
 
         // Find a buffer_handle_t based on bufferId
-        status_t popInflightRequestBuffer(uint64_t bufferId, /*out*/ buffer_handle_t **buffer);
+        status_t popInflightRequestBuffer(uint64_t bufferId,
+                /*out*/ buffer_handle_t** buffer,
+                /*optional out*/ int32_t* streamId = nullptr);
 
         // Get a vector of (frameNumber, streamId) pair of currently inflight
         // buffers
         void getInflightBufferKeys(std::vector<std::pair<int32_t, int32_t>>* out);
+
+        // Get a vector of bufferId of currently inflight buffers
+        void getInflightRequestBufferKeys(std::vector<uint64_t>* out);
 
         static const uint64_t BUFFER_ID_NO_BUFFER = 0;
       private:
@@ -398,7 +404,7 @@ class Camera3Device :
 
         // Buffers given to HAL through requestStreamBuffer API
         std::mutex mRequestedBuffersLock;
-        std::unordered_map<uint64_t, buffer_handle_t*> mRequestedBuffers;
+        std::unordered_map<uint64_t, std::pair<int32_t, buffer_handle_t*>> mRequestedBuffers;
 
         uint32_t mNextStreamConfigCounter = 1;
 
@@ -1244,8 +1250,10 @@ class Camera3Device :
     /**
      * Distortion correction support
      */
-
-    camera3::DistortionMapper mDistortionMapper;
+    // Map from camera IDs to its corresponding distortion mapper. Only contains
+    // 1 ID if the device isn't a logical multi-camera. Otherwise contains both
+    // logical camera and its physical subcameras.
+    std::unordered_map<std::string, camera3::DistortionMapper> mDistortionMappers;
 
     // Debug tracker for metadata tag value changes
     // - Enabled with the -m <taglist> option to dumpsys, such as

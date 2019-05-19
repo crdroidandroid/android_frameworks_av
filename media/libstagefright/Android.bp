@@ -90,22 +90,6 @@ cc_library_static {
         "liblog",
         "libmedia",
         "libmedia_omx",
-
-        // for libavextensions
-        "android.hidl.memory@1.0",
-    ],
-
-    static_libs: [
-        // for libavextensions
-        "libstagefright_mpeg2support",
-        "libavextensions",
-    ],
-
-    include_dirs: [
-        // for libavextensions
-        "frameworks/av/media/libavextensions",
-        "frameworks/av/media/libmediaextractor",
-        "frameworks/av/media/libstagefright/mpeg2ts",
     ],
 
     export_include_dirs: [
@@ -117,6 +101,7 @@ cc_library_static {
         "-Werror",
         "-Wno-error=deprecated-declarations",
         "-Wall",
+        "-D__NO_AVEXTENSIONS__",
     ],
 
     sanitize: {
@@ -198,11 +183,13 @@ cc_library {
         "libcutils",
         "libcrypto",
         "libdl",
+        "libdl_android",
         "libdrmframework",
         "libgui",
         "liblog",
         "libmedia",
         "libmedia_omx",
+        "libmedia_omx_client",
         "libaudioclient",
         "libmediametrics",
         "libmediautils",
@@ -216,7 +203,6 @@ cc_library {
         "libhidlallocatorutils",
         "libhidlbase",
         "libhidlmemory",
-        "libziparchive",
         "android.hidl.allocator@1.0",
         "android.hidl.memory@1.0",
         "android.hardware.cas.native@1.0",
@@ -248,6 +234,8 @@ cc_library {
     ],
 
     export_shared_lib_headers: [
+        "libgui",
+        "libhidlmemory",
         "libmedia",
         "android.hidl.allocator@1.0",
     ],
@@ -313,29 +301,15 @@ cc_library_static {
         "libutils",
         "libstagefright_foundation",
         "libandroid",
-        "libdl",
-        "libhidlmemory",
-        "libcrypto",
-        "libstagefright_omx",
     ],
 
     static_libs: [
         "libmedia_player2_util",
         "libmedia2_jni_core",
-        "libstagefright_id3",
-        "libstagefright_mpeg2support",
-        "libstagefright_timedtext",
-        "libavextensions",
     ],
 
     export_include_dirs: [
         "include",
-    ],
-
-    include_dirs: [
-        "frameworks/av/media/libavextensions",
-        "frameworks/av/media/libmediaextractor",
-        "frameworks/av/media/libstagefright/mpeg2ts",
     ],
 
     cflags: [
@@ -343,6 +317,7 @@ cc_library_static {
         "-Werror",
         "-Wno-error=deprecated-declarations",
         "-Wall",
+        "-D__NO_AVEXTENSIONS__",
     ],
 
     product_variables: {
@@ -361,21 +336,3 @@ cc_library_static {
     },
 }
 
-subdirs = [
-    "codec2",
-    "codecs/*",
-    "colorconversion",
-    "filters",
-    "flac/dec",
-    "foundation",
-    "http",
-    "httplive",
-    "id3",
-    "mpeg2ts",
-    "omx",
-    "rtsp",
-    "tests",
-    "timedtext",
-    "webm",
-    "xmlparser",
-]

@@ -79,6 +79,10 @@ static const int64_t kMaxAllowedAudioSinkDelayUs = 1500000LL;
 
 static const int64_t kMinimumAudioClockUpdatePeriodUs = 20 /* msec */ * 1000;
 
+// Default video frame display duration when only video exists.
+// Used to set max media time in MediaClock.
+static const int64_t kDefaultVideoFrameIntervalUs = 100000LL;
+
 // static
 const NuPlayer::Renderer::PcmInfo NuPlayer::Renderer::AUDIO_PCMINFO_INITIALIZER = {
         AUDIO_CHANNEL_NONE,
@@ -99,6 +103,10 @@ static audio_format_t constexpr audioFormatFromEncoding(int32_t pcmEncoding) {
         return AUDIO_FORMAT_PCM_16_BIT;
     case kAudioEncodingPcm8bit:
         return AUDIO_FORMAT_PCM_8_BIT; // TODO: do we want to support this?
+    case kAudioEncodingPcm24bitPacked:
+        return AUDIO_FORMAT_PCM_24_BIT_PACKED;
+    case kAudioEncodingPcm32bit:
+        return AUDIO_FORMAT_PCM_32_BIT;
     default:
         ALOGE("%s: Invalid encoding: %d", __func__, pcmEncoding);
         return AUDIO_FORMAT_INVALID;
@@ -321,10 +329,10 @@ void NuPlayer::Renderer::flush(bool audio, bool notifyComplete) {
             mNotifyCompleteVideo |= notifyComplete;
             ++mVideoQueueGeneration;
             ++mVideoDrainGeneration;
+            mNextVideoTimeMediaUs = -1;
         }
 
         mVideoLateByUs = 0;
-        mNextVideoTimeMediaUs = -1;
         mSyncQueues = false;
     }
 
@@ -1321,7 +1329,7 @@ void NuPlayer::Renderer::postDrainVideoQueue() {
     mNextVideoTimeMediaUs = mediaTimeUs;
     if (!mHasAudio) {
         // smooth out videos >= 10fps
-        mMediaClock->updateMaxTimeMedia(mediaTimeUs + 100000);
+        mMediaClock->updateMaxTimeMedia(mediaTimeUs + kDefaultVideoFrameIntervalUs);
     }
 
     if (!mVideoSampleReceived || mediaTimeUs < mAudioFirstAnchorTimeMediaUs || getVideoLateByUs() > 40000) {
@@ -1388,7 +1396,7 @@ void NuPlayer::Renderer::onDrainVideoQueue() {
                     && mediaTimeUs > mLastAudioMediaTimeUs) {
                 // If audio ends before video, video continues to drive media clock.
                 // Also smooth out videos >= 10fps.
-                mMediaClock->updateMaxTimeMedia(mediaTimeUs + 100000);
+                mMediaClock->updateMaxTimeMedia(mediaTimeUs + kDefaultVideoFrameIntervalUs);
             }
         }
     } else {
@@ -1463,7 +1471,21 @@ void NuPlayer::Renderer::notifyEOS_l(bool audio, status_t finalResult, int64_t d
                 }
             } else {
                 mMediaClock->updateAnchor(
-                        mNextVideoTimeMediaUs, nowUs, mNextVideoTimeMediaUs + 100000);
+                        mNextVideoTimeMediaUs, nowUs,
+                        mNextVideoTimeMediaUs + kDefaultVideoFrameIntervalUs);
+            }
+
+            // calculated media time is smaller than current video actual media time, current
+            // kWhatDrainVideoQueue message in MediaClock will be post with delay (in some
+            // corner case such as seeking to end of specific clip that audio duration is very
+            // short than video duration, the delay will be very large), then will see playback
+            // stuck. Need to post kWhatDrainVideoQueue immediately and let video update anchor
+            // time to avoid such stuck.
+            if (mediaUs < mNextVideoTimeMediaUs - 100000 /* current video buffer media time*/) {
+                mNeedVideoClearAnchor = true;
+                sp<AMessage> msg = new AMessage(kWhatDrainVideoQueue, this);
+                msg->setInt32("drainGeneration", mVideoDrainGeneration);
+                msg->post();
             }
         }
     }
@@ -1616,6 +1638,14 @@ void NuPlayer::Renderer::onFlush(const sp<AMessage> &msg) {
             notifyComplete = mNotifyCompleteAudio;
             mNotifyCompleteAudio = false;
             mLastAudioMediaTimeUs = -1;
+
+            mHasAudio = false;
+            if (mNextVideoTimeMediaUs >= 0) {
+                int64_t nowUs = ALooper::GetNowUs();
+                mMediaClock->updateAnchor(
+                        mNextVideoTimeMediaUs, nowUs,
+                        mNextVideoTimeMediaUs + kDefaultVideoFrameIntervalUs);
+            }
         } else {
             notifyComplete = mNotifyCompleteVideo;
             mNotifyCompleteVideo = false;
@@ -1900,7 +1930,7 @@ void NuPlayer::Renderer::onAudioTearDown(AudioTearDownReason reason) {
 void NuPlayer::Renderer::startAudioOffloadPauseTimeout() {
     if (offloadingAudio()) {
         int64_t pauseTimeOutDuration = property_get_int64(
-            "vendor.audio.offload.pstimeout.secs",(kOffloadPauseMaxUs/1000000)/*default*/);
+            "audio.sys.offload.pstimeout.secs",(kOffloadPauseMaxUs/1000000)/*default*/);
         mWakeLock->acquire();
         sp<AMessage> msg = new AMessage(kWhatAudioOffloadPauseTimeout, this);
         msg->setInt32("drainGeneration", mAudioOffloadPauseTimeoutGeneration);

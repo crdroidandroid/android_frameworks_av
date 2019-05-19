@@ -114,14 +114,16 @@ public:
     audio_devices_t mDeviceType;
     String8         mDeviceAddress;
     uint32_t        mCbFlags; // flags indicating which callbacks to use, see kCbFlag*
+    /** Ignore the AUDIO_FLAG_NO_MEDIA_PROJECTION */
+    bool            mAllowPrivilegedPlaybackCapture = false;
 };
 
 
-// definitions for audio recording configuration updates
-// which update type is reported
-#define RECORD_CONFIG_EVENT_NONE -1
-#define RECORD_CONFIG_EVENT_START 1
-#define RECORD_CONFIG_EVENT_STOP  0
+// definitions for audio recording configuration updates;
+// keep in sync with AudioManager.java for values used from native code
+#define RECORD_CONFIG_EVENT_START  0
+#define RECORD_CONFIG_EVENT_STOP   1
+#define RECORD_CONFIG_EVENT_UPDATE 2
 
 static inline bool is_mix_loopback_render(uint32_t routeFlags) {
     return (routeFlags & MIX_ROUTE_FLAG_LOOP_BACK_AND_RENDER)

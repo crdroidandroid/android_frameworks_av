@@ -21,14 +21,15 @@
 
 #include "NdkImagePriv.h"
 #include "NdkImageReaderPriv.h"
+#include <private/media/NdkImage.h>
 
 #include <cutils/atomic.h>
 #include <utils/Log.h>
 #include <android_media_Utils.h>
-#include <android_runtime/android_view_Surface.h>
+#include <ui/PublicFormat.h>
 #include <private/android/AHardwareBufferHelpers.h>
 #include <grallocusage/GrallocUsageConversion.h>
-#include <media/stagefright/bqhelper/WGraphicBufferProducer.h>
+#include <gui/bufferqueue/1.0/WGraphicBufferProducer.h>
 
 using namespace android;
 
@@ -63,13 +64,13 @@ AImageReader::isSupportedFormatAndUsage(int32_t format, uint64_t usage) {
         case AIMAGE_FORMAT_YUV_420_888:
         case AIMAGE_FORMAT_JPEG:
         case AIMAGE_FORMAT_RAW16:
+        case AIMAGE_FORMAT_RAW_DEPTH:
         case AIMAGE_FORMAT_RAW_PRIVATE:
         case AIMAGE_FORMAT_RAW10:
         case AIMAGE_FORMAT_RAW12:
         case AIMAGE_FORMAT_DEPTH16:
         case AIMAGE_FORMAT_DEPTH_POINT_CLOUD:
         case AIMAGE_FORMAT_Y8:
-        case AIMAGE_FORMAT_RAW_DEPTH:
         case AIMAGE_FORMAT_HEIC:
         case AIMAGE_FORMAT_DEPTH_JPEG:
             return true;
@@ -93,13 +94,13 @@ AImageReader::getNumPlanesForFormat(int32_t format) {
         case AIMAGE_FORMAT_RGBA_FP16:
         case AIMAGE_FORMAT_JPEG:
         case AIMAGE_FORMAT_RAW16:
+        case AIMAGE_FORMAT_RAW_DEPTH:
         case AIMAGE_FORMAT_RAW_PRIVATE:
         case AIMAGE_FORMAT_RAW10:
         case AIMAGE_FORMAT_RAW12:
         case AIMAGE_FORMAT_DEPTH16:
         case AIMAGE_FORMAT_DEPTH_POINT_CLOUD:
         case AIMAGE_FORMAT_Y8:
-        case AIMAGE_FORMAT_RAW_DEPTH:
         case AIMAGE_FORMAT_HEIC:
         case AIMAGE_FORMAT_DEPTH_JPEG:
             return 1;
@@ -274,8 +275,8 @@ AImageReader::AImageReader(int32_t width,
 media_status_t
 AImageReader::init() {
     PublicFormat publicFormat = static_cast<PublicFormat>(mFormat);
-    mHalFormat = android_view_Surface_mapPublicFormatToHalFormat(publicFormat);
-    mHalDataSpace = android_view_Surface_mapPublicFormatToHalDataspace(publicFormat);
+    mHalFormat = mapPublicFormatToHalFormat(publicFormat);
+    mHalDataSpace = mapPublicFormatToHalDataspace(publicFormat);
     mHalUsage = AHardwareBuffer_convertToGrallocUsageBits(mUsage);
 
     sp<IGraphicBufferProducer> gbProducer;

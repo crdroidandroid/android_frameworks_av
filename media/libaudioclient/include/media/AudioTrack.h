@@ -933,7 +933,7 @@ public:
     class AudioTrackThread : public Thread
     {
     public:
-        AudioTrackThread(AudioTrack& receiver, bool bCanCallJava = false);
+        AudioTrackThread(AudioTrack& receiver);
 
         // Do not call Thread::requestExitAndWait() without first calling requestExit().
         // Thread::requestExitAndWait() is not virtual, and the implementation doesn't do enough.
@@ -1152,8 +1152,11 @@ public:
                                                     // AudioTracks.
 
     bool                    mPreviousTimestampValid;// true if mPreviousTimestamp is valid
-    bool                    mTimestampStartupGlitchReported; // reduce log spam
-    bool                    mRetrogradeMotionReported; // reduce log spam
+    bool                    mTimestampStartupGlitchReported;      // reduce log spam
+    bool                    mTimestampRetrogradePositionReported; // reduce log spam
+    bool                    mTimestampRetrogradeTimeReported;     // reduce log spam
+    bool                    mTimestampStallReported;              // reduce log spam
+    bool                    mTimestampStaleTimeReported;          // reduce log spam
     AudioTimestamp          mPreviousTimestamp;     // used to detect retrograde motion
     ExtendedTimestamp::Location mPreviousLocation;  // location used for previous timestamp
 

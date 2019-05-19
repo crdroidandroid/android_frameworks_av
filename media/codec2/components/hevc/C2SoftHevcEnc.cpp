@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2018 The Android Open Source Project
+ * Copyright (C) 2019 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -39,7 +39,7 @@
 namespace android {
 
 class C2SoftHevcEnc::IntfImpl : public C2InterfaceHelper {
-   public:
+  public:
     explicit IntfImpl(const std::shared_ptr<C2ReflectorHelper>& helper)
         : C2InterfaceHelper(helper) {
         setDerivedInstance(this);
@@ -73,6 +73,7 @@ class C2SoftHevcEnc::IntfImpl : public C2InterfaceHelper {
                              0u, (uint64_t)C2MemoryUsage::CPU_READ))
                          .build());
 
+        // matches size limits in codec library
         addParameter(
             DefineParam(mSize, C2_PARAMKEY_PICTURE_SIZE)
                 .withDefault(new C2StreamPictureSizeInfo::input(0u, 320, 240))
@@ -91,11 +92,41 @@ class C2SoftHevcEnc::IntfImpl : public C2InterfaceHelper {
                     Setter<decltype(*mFrameRate)>::StrictValueWithNoDeps)
                 .build());
 
+        // matches limits in codec library
+        addParameter(
+            DefineParam(mBitrateMode, C2_PARAMKEY_BITRATE_MODE)
+                .withDefault(new C2StreamBitrateModeTuning::output(
+                        0u, C2Config::BITRATE_VARIABLE))
+                .withFields({
+                    C2F(mBitrateMode, value).oneOf({
+                        C2Config::BITRATE_CONST,
+                        C2Config::BITRATE_VARIABLE,
+                        C2Config::BITRATE_IGNORE})
+                })
+                .withSetter(
+                    Setter<decltype(*mBitrateMode)>::StrictValueWithNoDeps)
+                .build());
+
         addParameter(
             DefineParam(mBitrate, C2_PARAMKEY_BITRATE)
                 .withDefault(new C2StreamBitrateInfo::output(0u, 64000))
                 .withFields({C2F(mBitrate, value).inRange(4096, 12000000)})
                 .withSetter(BitrateSetter)
+                .build());
+
+        // matches levels allowed within codec library
+        addParameter(
+                DefineParam(mComplexity, C2_PARAMKEY_COMPLEXITY)
+                .withDefault(new C2StreamComplexityTuning::output(0u, 0))
+                .withFields({C2F(mComplexity, value).inRange(0, 10)})
+                .withSetter(Setter<decltype(*mComplexity)>::NonStrictValueWithNoDeps)
+                .build());
+
+        addParameter(
+                DefineParam(mQuality, C2_PARAMKEY_QUALITY)
+                .withDefault(new C2StreamQualityTuning::output(0u, 80))
+                .withFields({C2F(mQuality, value).inRange(0, 100)})
+                .withSetter(Setter<decltype(*mQuality)>::NonStrictValueWithNoDeps)
                 .build());
 
         addParameter(
@@ -137,7 +168,7 @@ class C2SoftHevcEnc::IntfImpl : public C2InterfaceHelper {
                              C2P<C2StreamBitrateInfo::output>& me) {
         (void)mayBlock;
         C2R res = C2R::Ok();
-        if (me.v.value <= 4096) {
+        if (me.v.value < 4096) {
             me.set().value = 4096;
         }
         return res;
@@ -278,17 +309,26 @@ class C2SoftHevcEnc::IntfImpl : public C2InterfaceHelper {
         return (uint32_t)c2_max(c2_min(period + 0.5, double(UINT32_MAX)), 1.);
     }
 
-   std::shared_ptr<C2StreamPictureSizeInfo::input> getSize_l() const {
+    std::shared_ptr<C2StreamPictureSizeInfo::input> getSize_l() const {
         return mSize;
     }
     std::shared_ptr<C2StreamFrameRateInfo::output> getFrameRate_l() const {
         return mFrameRate;
+    }
+    std::shared_ptr<C2StreamBitrateModeTuning::output> getBitrateMode_l() const {
+        return mBitrateMode;
     }
     std::shared_ptr<C2StreamBitrateInfo::output> getBitrate_l() const {
         return mBitrate;
     }
     std::shared_ptr<C2StreamRequestSyncFrameTuning::output> getRequestSync_l() const {
         return mRequestSync;
+    }
+    std::shared_ptr<C2StreamComplexityTuning::output> getComplexity_l() const {
+        return mComplexity;
+    }
+    std::shared_ptr<C2StreamQualityTuning::output> getQuality_l() const {
+        return mQuality;
     }
 
    private:
@@ -301,21 +341,27 @@ class C2SoftHevcEnc::IntfImpl : public C2InterfaceHelper {
     std::shared_ptr<C2StreamFrameRateInfo::output> mFrameRate;
     std::shared_ptr<C2StreamRequestSyncFrameTuning::output> mRequestSync;
     std::shared_ptr<C2StreamBitrateInfo::output> mBitrate;
+    std::shared_ptr<C2StreamBitrateModeTuning::output> mBitrateMode;
+    std::shared_ptr<C2StreamComplexityTuning::output> mComplexity;
+    std::shared_ptr<C2StreamQualityTuning::output> mQuality;
     std::shared_ptr<C2StreamProfileLevelInfo::output> mProfileLevel;
     std::shared_ptr<C2StreamSyncFrameIntervalTuning::output> mSyncFramePeriod;
 };
+
 constexpr char COMPONENT_NAME[] = "c2.android.hevc.encoder";
 
 static size_t GetCPUCoreCount() {
-    long cpuCoreCount = 1;
+    long cpuCoreCount = 0;
+
 #if defined(_SC_NPROCESSORS_ONLN)
     cpuCoreCount = sysconf(_SC_NPROCESSORS_ONLN);
 #else
     // _SC_NPROC_ONLN must be defined...
     cpuCoreCount = sysconf(_SC_NPROC_ONLN);
 #endif
-    CHECK(cpuCoreCount >= 1);
-    ALOGV("Number of CPU cores: %ld", cpuCoreCount);
+
+    if (cpuCoreCount < 1)
+        cpuCoreCount = 1;
     return (size_t)cpuCoreCount;
 }
 
@@ -381,9 +427,22 @@ static void fillEmptyWork(const std::unique_ptr<C2Work>& work) {
     work->workletsProcessed = 1u;
 }
 
+static int getQpFromQuality(int quality) {
+    int qp;
+#define MIN_QP 4
+#define MAX_QP 50
+    /* Quality: 100 -> Qp : MIN_QP
+     * Quality: 0 -> Qp : MAX_QP
+     * Qp = ((MIN_QP - MAX_QP) * quality / 100) + MAX_QP;
+     */
+    qp = ((MIN_QP - MAX_QP) * quality / 100) + MAX_QP;
+    qp = std::min(qp, MAX_QP);
+    qp = std::max(qp, MIN_QP);
+    return qp;
+}
 c2_status_t C2SoftHevcEnc::initEncParams() {
     mCodecCtx = nullptr;
-    mNumCores = MIN(GetCPUCoreCount(), CODEC_MAX_CORES);
+    mNumCores = std::min(GetCPUCoreCount(), (size_t) CODEC_MAX_CORES);
     memset(&mEncParams, 0, sizeof(ihevce_static_cfg_params_t));
 
     // default configuration
@@ -397,7 +456,8 @@ c2_status_t C2SoftHevcEnc::initEncParams() {
     mEncParams.s_src_prms.i4_width = mSize->width;
     mEncParams.s_src_prms.i4_height = mSize->height;
     mEncParams.s_src_prms.i4_frm_rate_denom = 1000;
-    mEncParams.s_src_prms.i4_frm_rate_num = mFrameRate->value * mEncParams.s_src_prms.i4_frm_rate_denom;
+    mEncParams.s_src_prms.i4_frm_rate_num =
+        mFrameRate->value * mEncParams.s_src_prms.i4_frm_rate_denom;
     mEncParams.s_tgt_lyr_prms.as_tgt_params[0].i4_quality_preset = IHEVCE_QUALITY_P5;
     mEncParams.s_tgt_lyr_prms.as_tgt_params[0].ai4_tgt_bitrate[0] =
         mBitrate->value;
@@ -409,8 +469,36 @@ c2_status_t C2SoftHevcEnc::initEncParams() {
     mIvVideoColorFormat = IV_YUV_420P;
     mEncParams.s_multi_thrd_prms.i4_max_num_cores = mNumCores;
     mEncParams.s_out_strm_prms.i4_codec_profile = mHevcEncProfile;
-    mEncParams.s_config_prms.i4_rate_control_mode = 2;
     mEncParams.s_lap_prms.i4_rc_look_ahead_pics = 0;
+
+    switch (mBitrateMode->value) {
+        case C2Config::BITRATE_IGNORE:
+            mEncParams.s_config_prms.i4_rate_control_mode = 3;
+            mEncParams.s_tgt_lyr_prms.as_tgt_params[0].ai4_frame_qp[0] =
+                getQpFromQuality(mQuality->value);
+            break;
+        case C2Config::BITRATE_CONST:
+            mEncParams.s_config_prms.i4_rate_control_mode = 5;
+            break;
+        case C2Config::BITRATE_VARIABLE:
+            [[fallthrough]];
+        default:
+            mEncParams.s_config_prms.i4_rate_control_mode = 2;
+            break;
+        break;
+    }
+
+    if (mComplexity->value == 10) {
+        mEncParams.s_tgt_lyr_prms.as_tgt_params[0].i4_quality_preset = IHEVCE_QUALITY_P0;
+    } else if (mComplexity->value >= 8) {
+        mEncParams.s_tgt_lyr_prms.as_tgt_params[0].i4_quality_preset = IHEVCE_QUALITY_P2;
+    } else if (mComplexity->value >= 7) {
+        mEncParams.s_tgt_lyr_prms.as_tgt_params[0].i4_quality_preset = IHEVCE_QUALITY_P3;
+    } else if (mComplexity->value >= 5) {
+        mEncParams.s_tgt_lyr_prms.as_tgt_params[0].i4_quality_preset = IHEVCE_QUALITY_P4;
+    } else {
+        mEncParams.s_tgt_lyr_prms.as_tgt_params[0].i4_quality_preset = IHEVCE_QUALITY_P5;
+    }
 
     return C2_OK;
 }
@@ -440,11 +528,14 @@ c2_status_t C2SoftHevcEnc::initEncoder() {
     {
         IntfImpl::Lock lock = mIntf->lock();
         mSize = mIntf->getSize_l();
+        mBitrateMode = mIntf->getBitrateMode_l();
         mBitrate = mIntf->getBitrate_l();
         mFrameRate = mIntf->getFrameRate_l();
         mHevcEncProfile = mIntf->getProfile_l();
         mHevcEncLevel = mIntf->getLevel_l();
         mIDRInterval = mIntf->getSyncFramePeriod_l();
+        mComplexity = mIntf->getComplexity_l();
+        mQuality = mIntf->getQuality_l();
     }
 
     c2_status_t status = initEncParams();
@@ -470,7 +561,7 @@ c2_status_t C2SoftHevcEnc::setEncodeArgs(ihevce_inp_buf_t* ps_encode_ip,
                                          const C2GraphicView* const input,
                                          uint64_t timestamp) {
     ihevce_static_cfg_params_t* params = &mEncParams;
-    memset(ps_encode_ip, 0, sizeof(ihevce_inp_buf_t));
+    memset(ps_encode_ip, 0, sizeof(*ps_encode_ip));
 
     if (!input) {
         return C2_OK;
@@ -495,13 +586,14 @@ c2_status_t C2SoftHevcEnc::setEncodeArgs(ihevce_inp_buf_t* ps_encode_ip,
     int32_t uStride = layout.planes[C2PlanarLayout::PLANE_U].rowInc;
     int32_t vStride = layout.planes[C2PlanarLayout::PLANE_V].rowInc;
 
-    uint32_t width = mSize->width;
-    uint32_t height = mSize->height;
+    const uint32_t width = mSize->width;
+    const uint32_t height = mSize->height;
 
-    // width and height are always even
-    // width and height are always even (as block size is 16x16)
-    CHECK_EQ((width & 1u), 0u);
-    CHECK_EQ((height & 1u), 0u);
+    // width and height must be even
+    if (width & 1u || height & 1u) {
+        ALOGW("height(%u) and width(%u) must both be even", height, width);
+        return C2_BAD_VALUE;
+    }
 
     size_t yPlaneSize = width * height;
 
@@ -650,6 +742,7 @@ void C2SoftHevcEnc::process(const std::unique_ptr<C2Work>& work,
         if (view->error() != C2_OK) {
             ALOGE("graphic view map err = %d", view->error());
             mSignalledError = true;
+            work->result = C2_CORRUPTED;
             return;
         }
     }
@@ -687,8 +780,8 @@ void C2SoftHevcEnc::process(const std::unique_ptr<C2Work>& work,
 
     status = setEncodeArgs(&s_encode_ip, view.get(), timestamp);
     if (C2_OK != status) {
-        mSignalledError = true;
         ALOGE("setEncodeArgs failed : 0x%x", status);
+        mSignalledError = true;
         work->result = status;
         return;
     }
@@ -761,8 +854,9 @@ class C2SoftHevcEncFactory : public C2ComponentFactory {
         : mHelper(std::static_pointer_cast<C2ReflectorHelper>(
               GetCodec2PlatformComponentStore()->getParamReflector())) {}
 
-    virtual c2_status_t createComponent(
-        c2_node_id_t id, std::shared_ptr<C2Component>* const component,
+    c2_status_t createComponent(
+        c2_node_id_t id,
+        std::shared_ptr<C2Component>* const component,
         std::function<void(C2Component*)> deleter) override {
         *component = std::shared_ptr<C2Component>(
             new C2SoftHevcEnc(
@@ -772,8 +866,9 @@ class C2SoftHevcEncFactory : public C2ComponentFactory {
         return C2_OK;
     }
 
-    virtual c2_status_t createInterface(
-        c2_node_id_t id, std::shared_ptr<C2ComponentInterface>* const interface,
+    c2_status_t createInterface(
+        c2_node_id_t id,
+        std::shared_ptr<C2ComponentInterface>* const interface,
         std::function<void(C2ComponentInterface*)> deleter) override {
         *interface = std::shared_ptr<C2ComponentInterface>(
             new SimpleInterface<C2SoftHevcEnc::IntfImpl>(
@@ -783,7 +878,7 @@ class C2SoftHevcEncFactory : public C2ComponentFactory {
         return C2_OK;
     }
 
-    virtual ~C2SoftHevcEncFactory() override = default;
+    ~C2SoftHevcEncFactory() override = default;
 
    private:
     std::shared_ptr<C2ReflectorHelper> mHelper;
