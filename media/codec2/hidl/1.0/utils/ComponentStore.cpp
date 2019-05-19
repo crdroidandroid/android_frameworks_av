@@ -23,7 +23,6 @@
 #include <codec2/hidl/1.0/types.h>
 
 #include <android-base/file.h>
-#include <media/stagefright/bqhelper/WGraphicBufferProducer.h>
 #include <media/stagefright/bqhelper/GraphicBufferSource.h>
 #include <utils/Errors.h>
 
@@ -219,13 +218,10 @@ Return<void> ComponentStore::createInputSurface(createInputSurface_cb _hidl_cb) 
         _hidl_cb(Status::CORRUPTED, nullptr);
         return Void();
     }
-    typedef ::android::hardware::graphics::bufferqueue::V1_0::
-            IGraphicBufferProducer HGbp;
-    typedef ::android::TWGraphicBufferProducer<HGbp> B2HGbp;
     sp<InputSurface> inputSurface = new InputSurface(
             this,
             std::make_shared<C2ReflectorHelper>(),
-            new B2HGbp(source->getIGraphicBufferProducer()),
+            source->getHGraphicBufferProducer(),
             source);
     _hidl_cb(inputSurface ? Status::OK : Status::NO_MEMORY,
              inputSurface);

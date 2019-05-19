@@ -58,10 +58,12 @@ public:
     typedef enum {
         API_INPUT_INVALID = -1,
         API_INPUT_LEGACY  = 0,// e.g. audio recording from a microphone
-        API_INPUT_MIX_CAPTURE,// used for "remote submix", capture of the media to play it remotely
+        API_INPUT_MIX_CAPTURE,// used for "remote submix" legacy mode (no DAP),
+                              // capture of the media to play it remotely
         API_INPUT_MIX_EXT_POLICY_REROUTE,// used for platform audio rerouting, where mixes are
                                          // handled by external and dynamically installed
                                          // policies which reroute audio mixes
+        API_INPUT_MIX_PUBLIC_CAPTURE_PLAYBACK,  // used for playback capture with a MediaProjection
         API_INPUT_TELEPHONY_RX, // used for capture from telephony RX path
     } input_type_t;
 
@@ -122,6 +124,7 @@ public:
     // request an input appropriate for record from the supplied device with supplied parameters.
     virtual status_t getInputForAttr(const audio_attributes_t *attr,
                                      audio_io_handle_t *input,
+                                     audio_unique_id_t riid,
                                      audio_session_t session,
                                      uid_t uid,
                                      const audio_config_base_t *config,
@@ -187,6 +190,7 @@ public:
                                     int id) = 0;
     virtual status_t unregisterEffect(int id) = 0;
     virtual status_t setEffectEnabled(int id, bool enabled) = 0;
+    virtual status_t moveEffectsToIo(const std::vector<int>& ids, audio_io_handle_t io) = 0;
 
     virtual bool isStreamActive(audio_stream_type_t stream, uint32_t inPastMs = 0) const = 0;
     virtual bool isStreamActiveRemotely(audio_stream_type_t stream,
@@ -196,6 +200,7 @@ public:
     //dump state
     virtual status_t    dump(int fd) = 0;
 
+    virtual status_t setAllowedCapturePolicy(uid_t uid, audio_flags_mask_t flags) = 0;
     virtual bool isOffloadSupported(const audio_offload_info_t& offloadInfo) = 0;
     virtual bool isDirectOutputSupported(const audio_config_base_t& config,
                                          const audio_attributes_t& attributes) = 0;
@@ -343,6 +348,10 @@ public:
     virtual status_t moveEffects(audio_session_t session,
                                      audio_io_handle_t srcOutput,
                                      audio_io_handle_t dstOutput) = 0;
+
+    virtual void setEffectSuspended(int effectId,
+                                    audio_session_t sessionId,
+                                    bool suspended) = 0;
 
     /* Create a patch between several source and sink ports */
     virtual status_t createAudioPatch(const struct audio_patch *patch,

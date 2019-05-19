@@ -36,6 +36,7 @@
 namespace aaudio {
 
 typedef void *(*aaudio_audio_thread_proc_t)(void *);
+typedef uint32_t aaudio_stream_id_t;
 
 class AudioStreamBuilder;
 
@@ -119,6 +120,12 @@ public:
      */
     virtual aaudio_result_t close() {
         return AAUDIO_OK;
+    }
+
+    // This is only used to identify a stream in the logs without
+    // revealing any pointers.
+    aaudio_stream_id_t getId() {
+        return mStreamId;
     }
 
     virtual aaudio_result_t setBufferSize(int32_t requestedFrames) = 0;
@@ -217,6 +224,10 @@ public:
 
     aaudio_input_preset_t getInputPreset() const {
         return mInputPreset;
+    }
+
+    aaudio_allowed_capture_policy_t getAllowedCapturePolicy() const {
+        return mAllowedCapturePolicy;
     }
 
     int32_t getSessionId() const {
@@ -525,6 +536,13 @@ protected:
         mInputPreset = inputPreset;
     }
 
+    /**
+     * This should not be called after the open() call.
+     */
+    void setAllowedCapturePolicy(aaudio_allowed_capture_policy_t policy) {
+        mAllowedCapturePolicy = policy;
+    }
+
 private:
 
     aaudio_result_t safeStop();
@@ -546,6 +564,7 @@ private:
     aaudio_usage_t              mUsage           = AAUDIO_UNSPECIFIED;
     aaudio_content_type_t       mContentType     = AAUDIO_UNSPECIFIED;
     aaudio_input_preset_t       mInputPreset     = AAUDIO_UNSPECIFIED;
+    aaudio_allowed_capture_policy_t mAllowedCapturePolicy = AAUDIO_ALLOW_CAPTURE_BY_ALL;
 
     int32_t                     mSessionId = AAUDIO_UNSPECIFIED;
 
@@ -574,6 +593,8 @@ private:
     aaudio_audio_thread_proc_t  mThreadProc = nullptr;
     void                       *mThreadArg = nullptr;
     aaudio_result_t             mThreadRegistrationResult = AAUDIO_OK;
+
+    const aaudio_stream_id_t    mStreamId;
 
 };
 

@@ -64,6 +64,11 @@ class CameraManagerGlobal final : public RefBase {
     void unregisterAvailabilityCallback(
             const ACameraManager_AvailabilityCallbacks *callback);
 
+    void registerExtendedAvailabilityCallback(
+            const ACameraManager_ExtendedAvailabilityCallbacks* /*callback*/) {}
+    void unregisterExtendedAvailabilityCallback(
+            const ACameraManager_ExtendedAvailabilityCallbacks* /*callback*/) {}
+
     /**
      * Return camera IDs that support camera2
      */
@@ -199,6 +204,7 @@ struct ACameraManager {
     camera_status_t openCamera(const char* cameraId,
                                ACameraDevice_StateCallbacks* callback,
                                /*out*/ACameraDevice** device);
+    camera_status_t getTagFromName(const char *cameraId, const char *name, uint32_t *tag);
 
   private:
     enum {

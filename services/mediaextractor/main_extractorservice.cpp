@@ -15,6 +15,7 @@
 ** limitations under the License.
 */
 
+#include <aicu/AIcu.h>
 #include <fcntl.h>
 #include <sys/prctl.h>
 #include <sys/wait.h>
@@ -29,7 +30,6 @@
 #include <utils/misc.h>
 
 // from LOCAL_C_INCLUDES
-#include "IcuUtils.h"
 #include "MediaExtractorService.h"
 #include "MediaUtils.h"
 #include "minijail.h"
@@ -40,12 +40,6 @@ static const char kSystemSeccompPolicyPath[] =
         "/system/etc/seccomp_policy/mediaextractor.policy";
 static const char kVendorSeccompPolicyPath[] =
         "/vendor/etc/seccomp_policy/mediaextractor.policy";
-
-// Disable Scudo's mismatch allocation check, as it is being triggered
-// by some third party code.
-extern "C" const char *__scudo_default_options() {
-    return "DeallocationTypeMismatch=false";
-}
 
 int main(int argc __unused, char** argv)
 {
@@ -64,7 +58,7 @@ int main(int argc __unused, char** argv)
 
     SetUpMinijail(kSystemSeccompPolicyPath, kVendorSeccompPolicyPath);
 
-    InitializeIcuOrDie();
+    AIcu_initializeIcuOrDie();
 
     strcpy(argv[0], "media.extractor");
     sp<ProcessState> proc(ProcessState::self());

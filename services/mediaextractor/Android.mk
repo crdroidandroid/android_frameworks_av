@@ -6,7 +6,7 @@ LOCAL_CFLAGS := -Wall -Werror
 LOCAL_SRC_FILES := \
     MediaExtractorService.cpp
 
-LOCAL_SHARED_LIBRARIES := libmedia libstagefright libbinder libutils liblog
+LOCAL_SHARED_LIBRARIES := libmedia libstagefright libbinder libutils
 LOCAL_MODULE:= libmediaextractorservice
 include $(BUILD_SHARED_LIBRARY)
 
@@ -20,14 +20,16 @@ LOCAL_REQUIRED_MODULES_x86 := crash_dump.policy mediaextractor.policy
 LOCAL_REQUIRED_MODULES_x86_64 := crash_dump.policy mediaextractor.policy
 
 LOCAL_SRC_FILES := main_extractorservice.cpp
-LOCAL_SHARED_LIBRARIES := libmedia libmediaextractorservice libbinder libutils \
-    liblog libbase libandroidicu libavservices_minijail
-LOCAL_STATIC_LIBRARIES := libicuandroid_utils
+ifneq (true, $(filter true, $(MALLOC_SVELTE)))
+# Scudo increases memory footprint, so only use on non-svelte configs.
+LOCAL_SHARED_LIBRARIES := libc_scudo
+endif
+LOCAL_SHARED_LIBRARIES += libmedia libmediaextractorservice libbinder libutils \
+    liblog libandroidicu libavservices_minijail
 LOCAL_MODULE:= mediaextractor
 LOCAL_INIT_RC := mediaextractor.rc
 LOCAL_C_INCLUDES := frameworks/av/media/libmedia
 LOCAL_CFLAGS := -Wall -Werror
-LOCAL_SANITIZE := scudo
 include $(BUILD_EXECUTABLE)
 
 # service seccomp filter

@@ -35,6 +35,11 @@ status_t EngineBase::initCheck()
     return (mApmObserver != nullptr)? NO_ERROR : NO_INIT;
 }
 
+void EngineBase::setDpConnAndAllowedForVoice(bool connAndAllowed)
+{
+    mDpConnAndAllowedForVoice = connAndAllowed;
+}
+
 status_t EngineBase::setPhoneState(audio_mode_t state)
 {
     ALOGV("setPhoneState() state %d", state);
@@ -70,7 +75,20 @@ product_strategy_t EngineBase::getProductStrategyForAttributes(const audio_attri
 
 audio_stream_type_t EngineBase::getStreamTypeForAttributes(const audio_attributes_t &attr) const
 {
-    return mProductStrategies.getStreamTypeForAttributes(attr);
+    audio_stream_type_t engineStream = mProductStrategies.getStreamTypeForAttributes(attr);
+    // ensure the audibility flag for sonification is honored for stream types
+    // Note this is typically implemented in the product strategy configuration files, but is
+    //   duplicated here for safety.
+    if (attr.usage == AUDIO_USAGE_ASSISTANCE_SONIFICATION
+            && ((attr.flags & AUDIO_FLAG_AUDIBILITY_ENFORCED) != 0)) {
+        engineStream = AUDIO_STREAM_ENFORCED_AUDIBLE;
+    }
+    // ensure the ENFORCED_AUDIBLE stream type reflects the "force use" setting:
+    if ((getForceUse(AUDIO_POLICY_FORCE_FOR_SYSTEM) != AUDIO_POLICY_FORCE_SYSTEM_ENFORCED)
+            && (engineStream == AUDIO_STREAM_ENFORCED_AUDIBLE)) {
+        return AUDIO_STREAM_SYSTEM;
+    }
+    return engineStream;
 }
 
 audio_attributes_t EngineBase::getAttributesForStreamType(audio_stream_type_t stream) const
@@ -218,6 +236,9 @@ VolumeCurves *EngineBase::getVolumeCurvesForAttributes(const audio_attributes_t 
 VolumeCurves *EngineBase::getVolumeCurvesForStreamType(audio_stream_type_t stream) const
 {
     volume_group_t volGr = mProductStrategies.getVolumeGroupForStreamType(stream);
+    if (volGr == VOLUME_GROUP_NONE) {
+        volGr = mProductStrategies.getDefaultVolumeGroup();
+    }
     const auto &iter = mVolumeGroups.find(volGr);
     LOG_ALWAYS_FATAL_IF(iter == std::end(mVolumeGroups), "No volume groups for %s",
                 toString(stream).c_str());
@@ -258,20 +279,6 @@ volume_group_t EngineBase::getVolumeGroupForAttributes(const audio_attributes_t 
 volume_group_t EngineBase::getVolumeGroupForStreamType(audio_stream_type_t stream) const
 {
     return mProductStrategies.getVolumeGroupForStreamType(stream);
-}
-
-StreamTypeVector EngineBase::getStreamTypesForVolumeGroup(volume_group_t volumeGroup) const
-{
-    // @TODO default music stream to control volume if no group?
-    return (mVolumeGroups.find(volumeGroup) != end(mVolumeGroups)) ?
-                mVolumeGroups.at(volumeGroup)->getStreamTypes() :
-                StreamTypeVector(AUDIO_STREAM_MUSIC);
-}
-
-AttributesVector EngineBase::getAllAttributesForVolumeGroup(volume_group_t volumeGroup) const
-{
-    return (mVolumeGroups.find(volumeGroup) != end(mVolumeGroups)) ?
-                mVolumeGroups.at(volumeGroup)->getSupportedAttributes() : AttributesVector();
 }
 
 status_t EngineBase::listAudioVolumeGroups(AudioVolumeGroupVector &groups) const

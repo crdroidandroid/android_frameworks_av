@@ -128,6 +128,7 @@ public:
         virtual void releaseOutput(audio_port_handle_t portId);
         virtual status_t getInputForAttr(const audio_attributes_t *attr,
                                          audio_io_handle_t *input,
+                                         audio_unique_id_t riid,
                                          audio_session_t session,
                                          uid_t uid,
                                          const audio_config_base_t *config,
@@ -142,7 +143,7 @@ public:
         // indicates to the audio policy manager that the input stops being used.
         virtual status_t stopInput(audio_port_handle_t portId);
         virtual void releaseInput(audio_port_handle_t portId);
-        virtual void closeAllInputs();
+        virtual void checkCloseInputs();
         /**
          * @brief initStreamVolume: even if the engine volume files provides min and max, keep this
          * api for compatibility reason.
@@ -171,11 +172,7 @@ public:
 
         virtual status_t getMinVolumeIndexForAttributes(const audio_attributes_t &attr, int &index);
 
-        status_t setVolumeGroupIndex(IVolumeCurves &volumeCurves, volume_group_t group, int index,
-                                     audio_devices_t device, const audio_attributes_t attributes);
-
-        status_t setVolumeCurveIndex(volume_group_t volumeGroup,
-                                     int index,
+        status_t setVolumeCurveIndex(int index,
                                      audio_devices_t device,
                                      IVolumeCurves &volumeCurves);
 
@@ -204,6 +201,7 @@ public:
                                         int id);
         virtual status_t unregisterEffect(int id);
         virtual status_t setEffectEnabled(int id, bool enabled);
+        status_t moveEffectsToIo(const std::vector<int>& ids, audio_io_handle_t io) override;
 
         virtual bool isStreamActive(audio_stream_type_t stream, uint32_t inPastMs = 0) const;
         // return whether a stream is playing remotely, override to change the definition of
@@ -222,6 +220,7 @@ public:
 
         status_t dump(int fd) override;
 
+        status_t setAllowedCapturePolicy(uid_t uid, audio_flags_mask_t capturePolicy) override;
         virtual bool isOffloadSupported(const audio_offload_info_t& offloadInfo);
 
         virtual bool isDirectOutputSupported(const audio_config_base_t& config,
@@ -345,12 +344,13 @@ protected:
         {
             return mInputs;
         }
-        virtual const DeviceVector &getAvailableOutputDevices() const
+        virtual const DeviceVector getAvailableOutputDevices() const
         {
             return mAvailableOutputDevices;
         }
-        virtual const DeviceVector &getAvailableInputDevices() const
+        virtual const DeviceVector getAvailableInputDevices() const
         {
+            // legacy and non-legacy remote-submix are managed by the engine, do not filter
             return mAvailableInputDevices;
         }
         virtual const sp<DeviceDescriptor> &getDefaultOutputDevice() const
@@ -358,6 +358,30 @@ protected:
             return mDefaultOutputDevice;
         }
 
+        std::vector<volume_group_t> getVolumeGroups() const
+        {
+            return mEngine->getVolumeGroups();
+        }
+
+        VolumeSource toVolumeSource(volume_group_t volumeGroup) const
+        {
+            return static_cast<VolumeSource>(volumeGroup);
+        }
+        VolumeSource toVolumeSource(const audio_attributes_t &attributes) const
+        {
+            return toVolumeSource(mEngine->getVolumeGroupForAttributes(attributes));
+        }
+        VolumeSource toVolumeSource(audio_stream_type_t stream) const
+        {
+            return toVolumeSource(mEngine->getVolumeGroupForStreamType(stream));
+        }
+        IVolumeCurves &getVolumeCurves(VolumeSource volumeSource)
+        {
+          auto *curves = mEngine->getVolumeCurvesForVolumeGroup(
+              static_cast<volume_group_t>(volumeSource));
+          ALOG_ASSERT(curves != nullptr, "No curves for volume source %d", volumeSource);
+          return *curves;
+        }
         IVolumeCurves &getVolumeCurves(const audio_attributes_t &attr)
         {
             auto *curves = mEngine->getVolumeCurvesForAttributes(attr);
@@ -395,16 +419,18 @@ protected:
 
         // compute the actual volume for a given stream according to the requested index and a particular
         // device
-        virtual float computeVolume(audio_stream_type_t stream,
+        virtual float computeVolume(IVolumeCurves &curves,
+                                    VolumeSource volumeSource,
                                     int index,
                                     audio_devices_t device);
 
         // rescale volume index from srcStream within range of dstStream
         int rescaleVolumeIndex(int srcIndex,
-                               audio_stream_type_t srcStream,
-                               audio_stream_type_t dstStream);
+                               VolumeSource fromVolumeSource,
+                               VolumeSource toVolumeSource);
         // check that volume change is permitted, compute and send new volume to audio hardware
-        virtual status_t checkAndSetVolume(audio_stream_type_t stream, int index,
+        virtual status_t checkAndSetVolume(IVolumeCurves &curves,
+                                           VolumeSource volumeSource, int index,
                                            const sp<AudioOutputDescriptor>& outputDesc,
                                            audio_devices_t device,
                                            int delayMs = 0, bool force = false);
@@ -428,12 +454,20 @@ protected:
                              int delayMs = 0,
                              audio_devices_t device = AUDIO_DEVICE_NONE);
 
-        // Mute or unmute the stream on the specified output
-        void setStreamMute(audio_stream_type_t stream,
-                           bool on,
-                           const sp<AudioOutputDescriptor>& outputDesc,
-                           int delayMs = 0,
-                           audio_devices_t device = (audio_devices_t)0);
+        /**
+         * @brief setVolumeSourceMute Mute or unmute the volume source on the specified output
+         * @param volumeSource to be muted/unmute (may host legacy streams or by extension set of
+         * audio attributes)
+         * @param on true to mute, false to umute
+         * @param outputDesc on which the client following the volume group shall be muted/umuted
+         * @param delayMs
+         * @param device
+         */
+        void setVolumeSourceMute(VolumeSource volumeSource,
+                                 bool on,
+                                 const sp<AudioOutputDescriptor>& outputDesc,
+                                 int delayMs = 0,
+                                 audio_devices_t device = AUDIO_DEVICE_NONE);
 
         audio_mode_t getPhoneState();
 
@@ -453,8 +487,7 @@ protected:
                                        SortedVector<audio_io_handle_t>& outputs);
 
         status_t checkInputsForDevice(const sp<DeviceDescriptor>& device,
-                                      audio_policy_dev_state_t state,
-                                      SortedVector<audio_io_handle_t>& inputs);
+                                      audio_policy_dev_state_t state);
 
         // close an output and its companion duplicating output.
         void closeOutput(audio_io_handle_t output);
@@ -476,7 +509,7 @@ protected:
          * Must be called before updateDevicesAndOutputs()
          * @param attr to be considered
          */
-        void checkOutputForAttributes(const audio_attributes_t &attr);
+        virtual void checkOutputForAttributes(const audio_attributes_t &attr);
 
         bool followsSameRouting(const audio_attributes_t &lAttr,
                                 const audio_attributes_t &rAttr) const;
@@ -724,6 +757,8 @@ protected:
         // Surround formats that are enabled manually. Taken into account when
         // "encoded surround" is forced into "manual" mode.
         std::unordered_set<audio_format_t> mManualSurroundFormats;
+
+        std::unordered_map<uid_t, audio_flags_mask_t> mAllowedCapturePolicies;
 protected:
         // Add or remove AC3 DTS encodings based on user preferences.
         void modifySurroundFormats(const sp<DeviceDescriptor>& devDesc, FormatVector *formatsPtr);
@@ -774,12 +809,13 @@ protected:
                 bool *isRequestedDeviceForExclusiveUse,
                 std::vector<sp<SwAudioOutputDescriptor>> *secondaryDescs);
         // internal method to return the output handle for the given device and format
-        audio_io_handle_t getOutputForDevices(
+        virtual audio_io_handle_t getOutputForDevices(
                 const DeviceVector &devices,
                 audio_session_t session,
                 audio_stream_type_t stream,
                 const audio_config_t *config,
-                audio_output_flags_t *flags);
+                audio_output_flags_t *flags,
+                bool forceMutingHaptic = false);
 
         /**
          * @brief getInputForDevice selects an input handle for a given input device and
@@ -798,7 +834,7 @@ protected:
                 const audio_attributes_t &attributes,
                 const audio_config_base_t *config,
                 audio_input_flags_t flags,
-                AudioMix *policyMix);
+                const sp<AudioPolicyMix> &policyMix);
 
         // event is one of STARTING_OUTPUT, STARTING_BEACON, STOPPING_OUTPUT, STOPPING_BEACON
         // returns 0 if no mute/unmute event happened, the largest latency of the device where
@@ -808,11 +844,15 @@ protected:
         bool     isValidAttributes(const audio_attributes_t *paa);
 
         // Called by setDeviceConnectionState().
-        status_t setDeviceConnectionStateInt(audio_devices_t deviceType,
+        virtual status_t setDeviceConnectionStateInt(audio_devices_t deviceType,
                                              audio_policy_dev_state_t state,
                                              const char *device_address,
                                              const char *device_name,
                                              audio_format_t encodedFormat);
+
+        void setEngineDeviceConnectionState(const sp<DeviceDescriptor> device,
+                                      audio_policy_dev_state_t state);
+
         void updateMono(audio_io_handle_t output) {
             AudioParameter param;
             param.addInt(String8(AudioParameter::keyMonoOutput), (int)mMasterMono);
@@ -830,6 +870,8 @@ protected:
                 int delayMs,
                 uid_t uid,
                 sp<AudioPatch> *patchDescPtr);
+
+        void cleanUpEffectsForIo(audio_io_handle_t io);
 };
 
 };

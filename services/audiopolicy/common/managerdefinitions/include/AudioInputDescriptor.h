@@ -29,7 +29,7 @@
 
 namespace android {
 
-class AudioMix;
+class AudioPolicyMix;
 class AudioPolicyClientInterface;
 
 // descriptor for audio inputs. Used to maintain current configuration of each opened audio input
@@ -53,7 +53,7 @@ public:
     void dump(String8 *dst) const override;
 
     audio_io_handle_t   mIoHandle = AUDIO_IO_HANDLE_NONE; // input handle
-    AudioMix            *mPolicyMix = nullptr;        // non NULL when used by a dynamic policy
+    wp<AudioPolicyMix>  mPolicyMix;                   // non NULL when used by a dynamic policy
     const sp<IOProfile> mProfile;                     // I/O profile this output derives from
 
     virtual void toAudioPortConfig(struct audio_port_config *dstConfig,
@@ -68,11 +68,13 @@ public:
     bool isSourceActive(audio_source_t source) const;
     audio_source_t source() const;
     bool isSoundTrigger() const;
+    sp<RecordClientDescriptor> getHighestPriorityClient() const;
     audio_attributes_t getHighestPriorityAttributes() const;
     void setClientActive(const sp<RecordClientDescriptor>& client, bool active);
     int32_t activeCount() { return mGlobalActiveCount; }
     void trackEffectEnabled(const sp<EffectDescriptor> &effect, bool enabled);
     EffectDescriptorCollection getEnabledEffects() const;
+    EffectDescriptorCollection getActiveEffects() const; // enabled and not suspended
     // implementation of AudioIODescriptorInterface
     audio_config_base_t getConfig() const override;
     audio_patch_handle_t getPatchHandle() const override;
@@ -99,6 +101,10 @@ public:
 
     // implementation of ClientMapHandler<RecordClientDescriptor>
     void addClient(const sp<RecordClientDescriptor> &client) override;
+
+    // Go over all active clients and suspend or restore effects according highest priority
+    // active use case
+    void checkSuspendEffects();
 
  private:
 

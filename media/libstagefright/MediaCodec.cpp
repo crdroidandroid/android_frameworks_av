@@ -1068,8 +1068,9 @@ status_t MediaCodec::configure(
         }
 
         // Prevent possible integer overflow in downstream code.
-        if ((uint64_t)mVideoWidth * mVideoHeight > (uint64_t)INT32_MAX / 4) {
-            ALOGE("buffer size is too big, width=%d, height=%d", mVideoWidth, mVideoHeight);
+        if (mVideoWidth < 0 || mVideoHeight < 0 ||
+               (uint64_t)mVideoWidth * mVideoHeight > (uint64_t)INT32_MAX / 4) {
+            ALOGE("Invalid size(s), width=%d, height=%d", mVideoWidth, mVideoHeight);
             return BAD_VALUE;
         }
     }
@@ -1128,6 +1129,9 @@ status_t MediaCodec::configure(
             reset();
         }
         if (!isResourceError(err)) {
+            if (err == OK) {
+                disableLegacyBufferDropPostQ(surface);
+            }
             break;
         }
     }
@@ -1193,7 +1197,11 @@ status_t MediaCodec::setSurface(const sp<Surface> &surface) {
     msg->setObject("surface", surface);
 
     sp<AMessage> response;
-    return PostAndAwaitResponse(msg, &response);
+    status_t result = PostAndAwaitResponse(msg, &response);
+    if (result == OK) {
+        disableLegacyBufferDropPostQ(surface);
+    }
+    return result;
 }
 
 status_t MediaCodec::createInputSurface(
@@ -1682,10 +1690,12 @@ void MediaCodec::requestCpuBoostIfNeeded() {
         return;
     }
     int32_t colorFormat;
-    if (mSoftRenderer != NULL
-            && mOutputFormat->contains("hdr-static-info")
+    if (mOutputFormat->contains("hdr-static-info")
             && mOutputFormat->findInt32("color-format", &colorFormat)
-            && (colorFormat == OMX_COLOR_FormatYUV420Planar16)) {
+            // check format for OMX only, for C2 the format is always opaque since the
+            // software rendering doesn't go through client
+            && ((mSoftRenderer != NULL && colorFormat == OMX_COLOR_FormatYUV420Planar16)
+                    || mOwnerName.equalsIgnoreCase("codec2::software"))) {
         int32_t left, top, right, bottom, width, height;
         int64_t totalPixel = 0;
         if (mOutputFormat->findRect("crop", &left, &top, &right, &bottom)) {
@@ -1957,6 +1967,13 @@ void MediaCodec::onMessageReceived(const sp<AMessage> &msg) {
 
                 case kWhatComponentAllocated:
                 {
+                    if (mState == RELEASING || mState == UNINITIALIZED) {
+                        // In case a kWhatError or kWhatRelease message came in and replied,
+                        // we log a warning and ignore.
+                        ALOGW("allocate interrupted by error or release, current state %d",
+                              mState);
+                        break;
+                    }
                     CHECK_EQ(mState, INITIALIZING);
                     setState(INITIALIZED);
                     mFlags |= kFlagIsComponentAllocated;
@@ -1975,6 +1992,7 @@ void MediaCodec::onMessageReceived(const sp<AMessage> &msg) {
                     } else {
                         mFlags &= ~kFlagUsesSoftwareRenderer;
                     }
+                    mOwnerName = owner;
 
                     MediaResource::Type resourceType;
                     if (mComponentName.endsWith(".secure")) {
@@ -1998,10 +2016,11 @@ void MediaCodec::onMessageReceived(const sp<AMessage> &msg) {
 
                 case kWhatComponentConfigured:
                 {
-                    if (mState == UNINITIALIZED || mState == INITIALIZED) {
-                        // In case a kWhatError message came in and replied with error,
+                    if (mState == RELEASING || mState == UNINITIALIZED || mState == INITIALIZED) {
+                        // In case a kWhatError or kWhatRelease message came in and replied,
                         // we log a warning and ignore.
-                        ALOGW("configure interrupted by error, current state %d", mState);
+                        ALOGW("configure interrupted by error or release, current state %d",
+                              mState);
                         break;
                     }
                     CHECK_EQ(mState, CONFIGURING);
@@ -2092,10 +2111,13 @@ void MediaCodec::onMessageReceived(const sp<AMessage> &msg) {
 
                 case kWhatStartCompleted:
                 {
-                    if (mState == RELEASING) {
-                        ALOGW("start interrupted by error, current state %d", mState);
+                    if (mState == RELEASING || mState == UNINITIALIZED) {
+                        // In case a kWhatRelease message came in and replied,
+                        // we log a warning and ignore.
+                        ALOGW("start interrupted by release, current state %d", mState);
                         break;
                     }
+
                     CHECK_EQ(mState, STARTING);
                     if (mIsVideo) {
                         addResource(
@@ -2234,6 +2256,7 @@ void MediaCodec::onMessageReceived(const sp<AMessage> &msg) {
                             }
 
                             if (mime.startsWithIgnoreCase("video/")) {
+                                mSurface->setDequeueTimeout(-1);
                                 mSoftRenderer = new SoftwareRenderer(mSurface, mRotationDegrees);
                             }
                         }
@@ -2524,6 +2547,7 @@ void MediaCodec::onMessageReceived(const sp<AMessage> &msg) {
                                             && (mFlags & kFlagPushBlankBuffersOnShutdown)) {
                                         pushBlankBuffersToNativeWindow(mSurface.get());
                                     }
+                                    surface->setDequeueTimeout(-1);
                                     mSoftRenderer = new SoftwareRenderer(surface);
                                     // TODO: check if this was successful
                                 } else {
@@ -2664,11 +2688,12 @@ void MediaCodec::onMessageReceived(const sp<AMessage> &msg) {
                 break;
             }
 
-            // If we're flushing, or we're stopping but received a release
-            // request, post the reply for the pending call first, and consider
-            // it done. The reply token will be replaced after this, and we'll
-            // no longer be able to reply.
-            if (mState == FLUSHING || mState == STOPPING) {
+            // If we're flushing, stopping, configuring or starting  but
+            // received a release request, post the reply for the pending call
+            // first, and consider it done. The reply token will be replaced
+            // after this, and we'll no longer be able to reply.
+            if (mState == FLUSHING || mState == STOPPING
+                    || mState == CONFIGURING || mState == STARTING) {
                 (new AMessage)->postReply(mReplyID);
             }
 

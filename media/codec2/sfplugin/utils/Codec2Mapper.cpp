@@ -379,11 +379,19 @@ ALookup<C2Config::level_t, int32_t> sAv1Levels = {
 
 
 ALookup<C2Config::profile_t, int32_t> sAv1Profiles = {
-    { C2Config::PROFILE_AV1_0, AV1Profile0 },
-    { C2Config::PROFILE_AV1_1, AV1Profile1 },
-    { C2Config::PROFILE_AV1_2, AV1Profile2 },
+    // TODO: will need to disambiguate between Main8 and Main10
+    { C2Config::PROFILE_AV1_0, AV1ProfileMain8 },
+    { C2Config::PROFILE_AV1_0, AV1ProfileMain10 },
 };
 
+ALookup<C2Config::profile_t, int32_t> sAv1HdrProfiles = {
+    { C2Config::PROFILE_AV1_0, AV1ProfileMain10 },
+    { C2Config::PROFILE_AV1_0, AV1ProfileMain10HDR10 },
+};
+
+ALookup<C2Config::profile_t, int32_t> sAv1Hdr10PlusProfiles = {
+    { C2Config::PROFILE_AV1_0, AV1ProfileMain10HDR10Plus },
+};
 
 /**
  * A helper that passes through vendor extension profile and level values.
@@ -589,6 +597,33 @@ private:
     bool mIsHdr10Plus;
 };
 
+struct Av1ProfileLevelMapper : ProfileLevelMapperHelper {
+    Av1ProfileLevelMapper(bool isHdr = false, bool isHdr10Plus = false) :
+        ProfileLevelMapperHelper(),
+        mIsHdr(isHdr), mIsHdr10Plus(isHdr10Plus) {}
+
+    virtual bool simpleMap(C2Config::level_t from, int32_t *to) {
+        return sAv1Levels.map(from, to);
+    }
+    virtual bool simpleMap(int32_t from, C2Config::level_t *to) {
+        return sAv1Levels.map(from, to);
+    }
+    virtual bool simpleMap(C2Config::profile_t from, int32_t *to) {
+        return mIsHdr10Plus ? sAv1Hdr10PlusProfiles.map(from, to) :
+                     mIsHdr ? sAv1HdrProfiles.map(from, to) :
+                              sAv1Profiles.map(from, to);
+    }
+    virtual bool simpleMap(int32_t from, C2Config::profile_t *to) {
+        return mIsHdr10Plus ? sAv1Hdr10PlusProfiles.map(from, to) :
+                     mIsHdr ? sAv1HdrProfiles.map(from, to) :
+                              sAv1Profiles.map(from, to);
+    }
+
+private:
+    bool mIsHdr;
+    bool mIsHdr10Plus;
+};
+
 } // namespace
 
 // static
@@ -613,6 +648,8 @@ C2Mapper::GetProfileLevelMapper(std::string mediaType) {
         return std::make_shared<Vp8ProfileLevelMapper>();
     } else if (mediaType == MIMETYPE_VIDEO_VP9) {
         return std::make_shared<Vp9ProfileLevelMapper>();
+    } else if (mediaType == MIMETYPE_VIDEO_AV1) {
+        return std::make_shared<Av1ProfileLevelMapper>();
     }
     return nullptr;
 }

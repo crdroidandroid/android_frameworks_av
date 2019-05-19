@@ -572,7 +572,6 @@ ACodec::ACodec()
       mFps(-1.0),
       mCaptureFps(-1.0),
       mCreateInputBuffersSuspended(false),
-      mLatency(0),
       mTunneled(false),
       mDescribeColorAspectsIndex((OMX_INDEXTYPE)0),
       mDescribeHDRStaticInfoIndex((OMX_INDEXTYPE)0),
@@ -787,6 +786,9 @@ status_t ACodec::handleSetSurface(const sp<Surface> &surface) {
 
     // need to enable allocation when attaching
     surface->getIGraphicBufferProducer()->allowAllocation(true);
+
+    // dequeueBuffer cannot time out
+    surface->setDequeueTimeout(-1);
 
     // for meta data mode, we move dequeud buffers to the new surface.
     // for non-meta mode, we must move all registered buffers
@@ -1794,7 +1796,7 @@ status_t ACodec::configureCodec(
     }
 
     int32_t prependSPSPPS = 0;
-    if (encoder
+    if (encoder && mIsVideo
             && msg->findInt32("prepend-sps-pps-to-idr-frames", &prependSPSPPS)
             && prependSPSPPS != 0) {
         OMX_INDEXTYPE index;
@@ -2602,7 +2604,7 @@ status_t ACodec::configureTemporalLayers(
         layerParams.nPLayerCountActual = numLayers - numBLayers;
         layerParams.nBLayerCountActual = numBLayers;
         layerParams.bBitrateRatiosSpecified = OMX_FALSE;
-        layerParams.nLayerCountMax = numLayers - numBLayers;
+        layerParams.nLayerCountMax = numLayers;
         layerParams.nBLayerCountMax = numBLayers;
 
         err = mOMXNode->setParameter(
@@ -4464,12 +4466,13 @@ status_t ACodec::setupAVCEncoderParameters(const sp<AMessage> &msg) {
                 OMX_VIDEO_AVCProfileConstrainedHigh)) {
         h264type.nSliceHeaderSpacing = 0;
         h264type.bUseHadamard = OMX_TRUE;
-        h264type.nRefFrames = 2;
-        h264type.nBFrames = mLatency == 0 ? 1 : std::min(1U, mLatency - 1);
-
-        // disable B-frames until we have explicit settings for enabling the feature.
-        h264type.nRefFrames = 1;
-        h264type.nBFrames = 0;
+        int32_t maxBframes = 0;
+        (void)msg->findInt32(KEY_MAX_B_FRAMES, &maxBframes);
+        h264type.nBFrames = uint32_t(maxBframes);
+        if (mLatency && h264type.nBFrames > *mLatency) {
+            h264type.nBFrames = *mLatency;
+        }
+        h264type.nRefFrames = h264type.nBFrames == 0 ? 1 : 2;
 
         h264type.nPFrames = setPFramesSpacing(iFrameInterval, frameRate, h264type.nBFrames);
         h264type.nAllowedPictureTypes =
@@ -6738,7 +6741,7 @@ bool ACodec::UninitializedState::onAllocateComponent(const sp<AMessage> &msg) {
         return false;
     }
 
-    mDeathNotifier = new DeathNotifier(notify);
+    mDeathNotifier = new DeathNotifier(new AMessage(kWhatOMXDied, mCodec));
     auto tOmxNode = omxNode->getHalInterface<IOmxNode>();
     if (tOmxNode && !tOmxNode->linkToDeath(mDeathNotifier, 0)) {
         mDeathNotifier.clear();

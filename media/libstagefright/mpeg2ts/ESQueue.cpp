@@ -35,7 +35,6 @@
 
 #include <inttypes.h>
 #include <netinet/in.h>
-#include <stagefright/AVExtensions.h>
 
 namespace android {
 
@@ -444,7 +443,6 @@ status_t ElementaryStreamQueue::appendData(
     if (!isScrambled() && (mBuffer == NULL || mBuffer->size() == 0)) {
         switch (mMode) {
             case H264:
-            case H265:
             case MPEG_VIDEO:
             {
 #if 0
@@ -908,8 +906,6 @@ sp<ABuffer> ElementaryStreamQueue::dequeueAccessUnit() {
     switch (mMode) {
         case H264:
             return dequeueAccessUnitH264();
-        case H265:
-            return dequeueAccessUnitH265();
         case AAC:
             return dequeueAccessUnitAAC();
         case AC3:
@@ -1530,6 +1526,7 @@ sp<ABuffer> ElementaryStreamQueue::dequeueAccessUnitMPEGAudio() {
                 header, &frameSize, &samplingRate, &numChannels,
                 &bitrate, &numSamples)) {
         ALOGE("Failed to get audio frame size");
+        mBuffer->setRange(0, 0);
         return NULL;
     }
 
@@ -1552,6 +1549,22 @@ sp<ABuffer> ElementaryStreamQueue::dequeueAccessUnitMPEGAudio() {
     if (timeUs < 0LL) {
         ALOGE("Negative timeUs");
         return NULL;
+    }
+
+    if (mFormat != NULL) {
+        const char *mime;
+        if (mFormat->findCString(kKeyMIMEType, &mime)) {
+            if ((layer == 1) && strcmp (mime, MEDIA_MIMETYPE_AUDIO_MPEG_LAYER_I)) {
+                ALOGE("Audio layer is not MPEG_LAYER_I");
+                return NULL;
+            } else if ((layer == 2) && strcmp (mime, MEDIA_MIMETYPE_AUDIO_MPEG_LAYER_II)) {
+                ALOGE("Audio layer is not MPEG_LAYER_II");
+                return NULL;
+            } else if ((layer == 3) && strcmp (mime, MEDIA_MIMETYPE_AUDIO_MPEG)) {
+                ALOGE("Audio layer is not AUDIO_MPEG");
+                return NULL;
+            }
+        }
     }
 
     accessUnit->meta()->setInt64("timeUs", timeUs);
