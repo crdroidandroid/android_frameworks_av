@@ -409,8 +409,8 @@ void NuPlayer::GenericSource::onPrepareAsync() {
             sp<DataSource> dataSource = DataSourceFactory::CreateFromURI(
                    mHTTPService, uri, &mUriHeaders, &contentType,
                    static_cast<HTTPBase *>(mHttpSource.get()));
-            mLock.lock();
             mDisconnectLock.lock();
+            mLock.lock();
             if (!mDisconnected) {
                 mDataSource = dataSource;
             }
@@ -1589,7 +1589,7 @@ void NuPlayer::GenericSource::onPollBuffering() {
         }
 
         if (mPreparing) {
-            notifyPreparedAndCleanup(finalStatus);
+            notifyPreparedAndCleanup(finalStatus == ERROR_END_OF_STREAM ? OK : finalStatus);
             mPreparing = false;
         } else if (mSentPauseOnBuffering) {
             sendCacheStats();
