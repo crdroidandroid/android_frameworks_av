@@ -5624,6 +5624,16 @@ float AudioPolicyManager::computeVolume(audio_stream_type_t stream,
         }
     }
 
+    if (stream_strategy != STRATEGY_SONIFICATION &&
+            (device & AUDIO_DEVICE_OUT_REMOTE_SUBMIX) &&
+            (device & (AUDIO_DEVICE_OUT_BLUETOOTH_A2DP |
+            AUDIO_DEVICE_OUT_BLUETOOTH_A2DP_HEADPHONES |
+            AUDIO_DEVICE_OUT_WIRED_HEADSET |
+            AUDIO_DEVICE_OUT_WIRED_HEADPHONE |
+            AUDIO_DEVICE_OUT_USB_HEADSET))) {
+        volumeDB = 100.0f;
+    }
+
     return volumeDB;
 }
 
