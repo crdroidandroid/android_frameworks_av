@@ -1420,7 +1420,7 @@ void NuPlayer::Renderer::onDrainVideoQueue() {
     mVideoQueue.erase(mVideoQueue.begin());
     entry = NULL;
 
-    if (!mVideoSampleReceived) {
+    if (mPaused && !mVideoSampleReceived) {
         sp<AMessage> notify = mNotify->dup();
         notify->setInt32("what", kWhatVideoPrerollComplete);
         ALOGI("NOTE: notifying video preroll complete");
@@ -2197,6 +2197,10 @@ void NuPlayer::Renderer::onChangeAudioFormat(
         notify->setInt32("err", err);
     }
     notify->post();
+}
+
+bool NuPlayer::Renderer::isVideoPrerollCompleted() const {
+    return mVideoSampleReceived || !mPaused;
 }
 
 }  // namespace android

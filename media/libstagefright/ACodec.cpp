@@ -2202,8 +2202,8 @@ status_t ACodec::configureCodec(
             err = setupG711Codec(encoder, sampleRate, numChannels);
         }
 #ifdef QTI_FLAC_DECODER
-//setup qti flac component only if it is enabled and it is not encoder and pcm encoding is not pcmFloat
-    } else if (!strcasecmp(mime, MEDIA_MIMETYPE_AUDIO_FLAC) && (encoder || pcmEncoding == kAudioEncodingPcmFloat)) {
+//setup qti component From setupCustomCodec only when it starts with OMX.qti. otherwise create incoming component.
+    } else if (!strcasecmp(mime, MEDIA_MIMETYPE_AUDIO_FLAC) && !mComponentName.startsWith("OMX.qti.")) {
 #else
     } else if (!strcasecmp(mime, MEDIA_MIMETYPE_AUDIO_FLAC)) {
 #endif
@@ -3456,9 +3456,18 @@ status_t ACodec::setupVideoDecoder(
         err = setVideoPortFormatType(
                 kPortIndexOutput, OMX_VIDEO_CodingUnused, colorFormat, haveNativeWindow);
         if (err != OK) {
-            ALOGW("[%s] does not support color format %d",
-                  mComponentName.c_str(), colorFormat);
-            err = setSupportedOutputFormat(!haveNativeWindow /* getLegacyFlexibleFormat */);
+            int32_t thumbnailMode = 0;
+            if (msg->findInt32("thumbnail-mode", &thumbnailMode) &&
+                thumbnailMode) {
+                err = setVideoPortFormatType(
+                kPortIndexOutput, OMX_VIDEO_CodingUnused,
+                OMX_COLOR_FormatYUV420Planar, haveNativeWindow);
+            }
+            if (err != OK) {
+                ALOGW("[%s] does not support color format %d",
+                      mComponentName.c_str(), colorFormat);
+                err = setSupportedOutputFormat(!haveNativeWindow /* getLegacyFlexibleFormat */);
+            }
         }
     } else {
         err = setSupportedOutputFormat(!haveNativeWindow /* getLegacyFlexibleFormat */);
@@ -4542,17 +4551,22 @@ status_t ACodec::setupAVCEncoderParameters(const sp<AMessage> &msg) {
 status_t ACodec::configureImageGrid(
         const sp<AMessage> &msg, sp<AMessage> &outputFormat) {
     int32_t tileWidth, tileHeight, gridRows, gridCols;
-    if (!msg->findInt32("tile-width", &tileWidth) ||
-        !msg->findInt32("tile-height", &tileHeight) ||
-        !msg->findInt32("grid-rows", &gridRows) ||
-        !msg->findInt32("grid-cols", &gridCols)) {
+    OMX_BOOL useGrid = OMX_FALSE;
+    if (msg->findInt32("tile-width", &tileWidth) &&
+        msg->findInt32("tile-height", &tileHeight) &&
+        msg->findInt32("grid-rows", &gridRows) &&
+        msg->findInt32("grid-cols", &gridCols)) {
+        useGrid = OMX_TRUE;
+    }
+
+    if (!mIsImage && !useGrid) {
         return OK;
     }
 
     OMX_VIDEO_PARAM_ANDROID_IMAGEGRIDTYPE gridType;
     InitOMXParams(&gridType);
     gridType.nPortIndex = kPortIndexOutput;
-    gridType.bEnabled = OMX_TRUE;
+    gridType.bEnabled = useGrid;
     gridType.nTileWidth = tileWidth;
     gridType.nTileHeight = tileHeight;
     gridType.nGridRows = gridRows;
@@ -7515,6 +7529,22 @@ status_t ACodec::setParameters(const sp<AMessage> &params) {
 
             return err;
         }
+    }
+
+    int32_t nIFrameInterval = 0, nPFrames = 0, nBFrames = 0;
+    if (params->findInt32(KEY_I_FRAME_INTERVAL, &nIFrameInterval)) {
+        if (!params->findInt32(KEY_MAX_B_FRAMES, &nBFrames)) {
+            sp<AMessage> format = new AMessage;
+            getVendorParameters(kPortIndexOutput, format);
+            format->findInt32("vendor.qti-ext-enc-intra-period.n-bframes", &nBFrames);
+        }
+
+        nPFrames = setPFramesSpacing(nIFrameInterval, mFps, nBFrames);
+
+        sp<AMessage> updatedFormat = new AMessage;
+        updatedFormat->setInt32("vendor.qti-ext-enc-intra-period.n-pframes", nPFrames);
+        updatedFormat->setInt32("vendor.qti-ext-enc-intra-period.n-bframes", nBFrames);
+        setVendorParameters(updatedFormat);
     }
 
     int64_t timeOffsetUs;
