@@ -1227,7 +1227,7 @@ void NuPlayer::Renderer::onNewAudioMediaTime(int64_t mediaTimeUs) {
     Mutex::Autolock autoLock(mLock);
     // TRICKY: vorbis decoder generates multiple frames with the same
     // timestamp, so only update on the first frame with a given timestamp
-    if (mediaTimeUs == mAnchorTimeMediaUs) {
+    if (mAnchorTimeMediaUs > 0 && mediaTimeUs == mAnchorTimeMediaUs) {
         return;
     }
     setAudioFirstAnchorTimeIfNeeded_l(mediaTimeUs);
@@ -1420,7 +1420,7 @@ void NuPlayer::Renderer::onDrainVideoQueue() {
     mVideoQueue.erase(mVideoQueue.begin());
     entry = NULL;
 
-    if (!mVideoSampleReceived) {
+    if (mPaused && !mVideoSampleReceived) {
         sp<AMessage> notify = mNotify->dup();
         notify->setInt32("what", kWhatVideoPrerollComplete);
         ALOGI("NOTE: notifying video preroll complete");
@@ -2200,7 +2200,7 @@ void NuPlayer::Renderer::onChangeAudioFormat(
 }
 
 bool NuPlayer::Renderer::isVideoPrerollCompleted() const {
-    return mVideoSampleReceived;
+    return mVideoSampleReceived || !mPaused;
 }
 
 }  // namespace android
