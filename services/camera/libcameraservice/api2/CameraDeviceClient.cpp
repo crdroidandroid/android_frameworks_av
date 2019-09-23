@@ -1568,6 +1568,11 @@ bool CameraDeviceClient::roundBufferDimensionNearest(int32_t width, int32_t heig
         }
     }
 
+    if (format == HAL_PIXEL_FORMAT_Y16) {
+        bestWidth = width;
+        bestHeight = height;
+    }
+
     if (bestWidth == -1) {
         // Return false if no configurations for this format were listed
         return false;
