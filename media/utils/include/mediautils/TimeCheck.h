@@ -20,7 +20,7 @@
 
 #include <utils/KeyedVector.h>
 #include <utils/Thread.h>
-
+#include <vector>
 
 namespace android {
 
@@ -35,6 +35,8 @@ public:
             TimeCheck(const char *tag, bool systemReady = false);
             ~TimeCheck();
     static void setSystemReadyTimeoutMs(uint32_t timeoutMs);
+    static  void setAudioHalPids(const std::vector<pid_t>& pids);
+    static  std::vector<pid_t> getAudioHalPids();
 
 private:
 
@@ -63,6 +65,7 @@ private:
     };
 
     static sp<TimeCheckThread> getTimeCheckThread();
+    static void accessAudioHalPids(std::vector<pid_t>* pids, bool update);
 
     nsecs_t mEndTimeNs;
 };
