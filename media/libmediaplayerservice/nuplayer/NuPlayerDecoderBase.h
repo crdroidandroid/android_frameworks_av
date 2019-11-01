@@ -86,9 +86,12 @@ protected:
 
     sp<AMessage> mNotify;
     int32_t mBufferGeneration;
+    int64_t mRequestInputBufferDelayUs;
     bool mPaused;
     sp<AMessage> mStats;
     Mutex mStatsLock;
+
+    static constexpr int64_t kDefaultRequestInputBufferDelayUs = 10000LL;
 
 private:
     enum {
