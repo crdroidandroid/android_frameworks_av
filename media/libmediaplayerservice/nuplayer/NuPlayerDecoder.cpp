@@ -456,7 +456,17 @@ void NuPlayer::Decoder::onSetParameters(const sp<AMessage> &params) {
         }
 
         sp<AMessage> codecParams = new AMessage();
-        codecParams->setFloat("operating-rate", decodeFrameRate * mPlaybackSpeed);
+        float operating_rate = decodeFrameRate * mPlaybackSpeed;
+        // Historically, we would delay input buffer requests by 10ms, which may be problematic for
+        // framerates higher than 100 fps. For lower framerates we keep the historic default to
+        // minimize risk of regression. For higher framerates, we adjust the delay to the operation
+        // rate. See b/208475704.
+        if (operating_rate > 100.f) {
+            mRequestInputBufferDelayUs = (int64_t)(1000000.f / operating_rate);
+        } else {
+            mRequestInputBufferDelayUs = kDefaultRequestInputBufferDelayUs;
+        }
+        codecParams->setFloat("operating-rate", operating_rate);
         mCodec->setParameters(codecParams);
     }
 }
