@@ -182,6 +182,7 @@ NuPlayer::NuPlayer(pid_t pid, const sp<MediaClock> &mediaClock)
       mAudioDecoderGeneration(0),
       mVideoDecoderGeneration(0),
       mRendererGeneration(0),
+      mMaxOutputFrameRate(60),
       mLastStartedPlayingTimeNs(0),
       mLastStartedRebufferingTimeNs(0),
       mPreviousSeekTimeUs(0),
@@ -1597,8 +1598,16 @@ void NuPlayer::onStart(int64_t startPositionUs, MediaPlayerSeekMode mode) {
         return;
     }
 
+    if (mSurface != NULL) {
+        int64_t refreshDuration = 0;
+        native_window_get_refresh_cycle_duration(mSurface.get(), &refreshDuration);
+        if (refreshDuration > 0)
+            mMaxOutputFrameRate = round(1000000000.0f / refreshDuration);
+    }
+
     float rate = getFrameRate();
     if (rate > 0) {
+        rate = (rate > mMaxOutputFrameRate) ? mMaxOutputFrameRate : rate;
         mRenderer->setVideoFrameRate(rate);
     }
 
@@ -1935,6 +1944,11 @@ status_t NuPlayer::instantiateDecoder(
         if (rate > 0) {
             format->setFloat("operating-rate", rate * mPlaybackSettings.mSpeed);
         }
+        if (rate <= 0 || rate > mMaxOutputFrameRate)
+            format->setInt32("output-frame-rate", mMaxOutputFrameRate);
+        if (rate <= 0 || rate > mMaxOutputFrameRate)
+            format->setFloat("vendor.qti-ext-dec-output-render-frame-rate.value",
+		        mMaxOutputFrameRate);
     }
 
     Mutex::Autolock autoLock(mDecoderLock);
