@@ -539,6 +539,17 @@ Return<DevicePortTraits::Element> DevicePortTraits::deserialize(const xmlNode *c
     return deviceDesc;
 }
 
+char* trim(char * s) {
+    int l = strlen(s);
+
+    if (l > 0) {
+      while (isspace(s[l - 1])) --l;
+      while (*s && isspace(*s)) ++s, --l;
+    }
+
+    return strndup(s, l);
+}
+
 Return<RouteTraits::Element> RouteTraits::deserialize(const xmlNode *cur, PtrSerializingCtx ctx)
 {
     std::string type = getXmlAttribute(cur, Attributes::type);
@@ -579,8 +590,11 @@ Return<RouteTraits::Element> RouteTraits::deserialize(const xmlNode *cur, PtrSer
         if (strlen(devTag) != 0) {
             sp<PolicyAudioPort> source = ctx->findPortByTagName(devTag);
             if (source == NULL) {
-                ALOGE("%s: no source found with name=%s", __func__, devTag);
-                return Status::fromStatusT(BAD_VALUE);
+                source = ctx->findPortByTagName(trim(devTag));
+                if (source == NULL) {
+                    ALOGE("%s: no source found with name=%s", __func__, devTag);
+                    return Status::fromStatusT(BAD_VALUE);
+                }
             }
             sources.add(source);
         }
