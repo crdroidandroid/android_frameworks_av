@@ -225,6 +225,7 @@ cc_library {
 
     srcs: [
         "IDataSource.cpp",
+        "IHDCP.cpp",
         "BufferingSettings.cpp",
         "mediaplayer.cpp",
         "IMediaHTTPConnection.cpp",
@@ -290,6 +291,7 @@ cc_library {
         "libcamera_client",
         "libstagefright_foundation",
         "libgui",
+        "libui",
         "libdl",
         "libaudioutils",
         "libaudioclient",
