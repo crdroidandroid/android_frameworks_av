@@ -3248,9 +3248,16 @@ audio_io_handle_t AudioPolicyManager::selectOutputForMusicEffects()
     }
 
     if (output != mMusicEffectOutput) {
-        mEffects.moveEffects(AUDIO_SESSION_OUTPUT_MIX, mMusicEffectOutput, output);
-        mpClientInterface->moveEffects(AUDIO_SESSION_OUTPUT_MIX, mMusicEffectOutput, output);
-        mMusicEffectOutput = output;
+        if (mpClientInterface->moveEffects(
+                                      AUDIO_SESSION_OUTPUT_MIX,
+                                      mMusicEffectOutput, output) != NO_ERROR
+            && mOutputs.valueFor(output)->isDuplicated()) {
+            ALOGW("gloabl effect do not support duplicating thread");
+            output = AUDIO_IO_HANDLE_NONE;
+        } else {
+            mEffects.moveEffects(AUDIO_SESSION_OUTPUT_MIX, mMusicEffectOutput, output);
+            mMusicEffectOutput = output;
+        }
     }
 
     ALOGV("selectOutputForMusicEffects selected output %d", output);
