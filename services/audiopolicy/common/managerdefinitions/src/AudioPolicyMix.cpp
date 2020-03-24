@@ -205,30 +205,6 @@ AudioPolicyMixCollection::MixMatchStatus AudioPolicyMixCollection::mixMatch(
         const AudioMix* mix, size_t mixIndex, const audio_attributes_t& attributes, uid_t uid) {
 
     if (mix->mMixType == MIX_TYPE_PLAYERS) {
-        // Loopback render mixes are created from a public API and thus restricted
-        // to non sensible audio that have not opted out.
-        if (is_mix_loopback_render(mix->mRouteFlags)) {
-            if (!(attributes.usage == AUDIO_USAGE_UNKNOWN ||
-                  attributes.usage == AUDIO_USAGE_MEDIA ||
-                  attributes.usage == AUDIO_USAGE_GAME ||
-                  attributes.usage == AUDIO_USAGE_VOICE_COMMUNICATION)) {
-                return MixMatchStatus::NO_MATCH;
-            }
-            auto hasFlag = [](auto flags, auto flag) { return (flags & flag) == flag; };
-            if (hasFlag(attributes.flags, AUDIO_FLAG_NO_SYSTEM_CAPTURE)) {
-                return MixMatchStatus::NO_MATCH;
-            }
-
-            if (attributes.usage == AUDIO_USAGE_VOICE_COMMUNICATION) {
-                if (!mix->mVoiceCommunicationCaptureAllowed) {
-                    return MixMatchStatus::NO_MATCH;
-                }
-            } else if (!mix->mAllowPrivilegedMediaPlaybackCapture &&
-                hasFlag(attributes.flags, AUDIO_FLAG_NO_MEDIA_PROJECTION)) {
-                return MixMatchStatus::NO_MATCH;
-            }
-        }
-
         int userId = (int) multiuser_get_user_id(uid);
 
         // TODO if adding more player rules (currently only 2), make rule handling "generic"
