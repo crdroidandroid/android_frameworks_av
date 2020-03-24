@@ -426,30 +426,6 @@ bool AudioPolicyMixCollection::mixMatch(const AudioMix* mix, size_t mixIndex,
     uid_t uid, audio_session_t session) {
 
     if (mix->mMixType == MIX_TYPE_PLAYERS) {
-        // Loopback render mixes are created from a public API and thus restricted
-        // to non sensible audio that have not opted out.
-        if (is_mix_loopback_render(mix->mRouteFlags)) {
-            if (!(attributes.usage == AUDIO_USAGE_UNKNOWN ||
-                  attributes.usage == AUDIO_USAGE_MEDIA ||
-                  attributes.usage == AUDIO_USAGE_GAME ||
-                  attributes.usage == AUDIO_USAGE_VOICE_COMMUNICATION)) {
-                return false;
-            }
-            auto hasFlag = [](auto flags, auto flag) { return (flags & flag) == flag; };
-            if (hasFlag(attributes.flags, AUDIO_FLAG_NO_SYSTEM_CAPTURE)) {
-                return false;
-            }
-
-            if (attributes.usage == AUDIO_USAGE_VOICE_COMMUNICATION) {
-                if (!mix->mVoiceCommunicationCaptureAllowed) {
-                    return false;
-                }
-            } else if (!mix->mAllowPrivilegedMediaPlaybackCapture &&
-                hasFlag(attributes.flags, AUDIO_FLAG_NO_MEDIA_PROJECTION)) {
-                return false;
-            }
-        }
-
         // Permit match only if requested format and mix format are PCM and can be format
         // adapted by the mixer, or are the same (compressed) format.
         if (!is_mix_loopback(mix->mRouteFlags) &&
