@@ -239,7 +239,7 @@ audio_flags_mask_t AAudioConvert_allowCapturePolicyToAudioFlagsMask(
         aaudio_spatialization_behavior_t spatializationBehavior,
         bool isContentSpatialized) {
     audio_flags_mask_t flagsMask = AUDIO_FLAG_NONE;
-    switch (policy) {
+    /*switch (policy) {
         case AAUDIO_UNSPECIFIED:
         case AAUDIO_ALLOW_CAPTURE_BY_ALL:
             // flagsMask is not modified
@@ -254,7 +254,7 @@ audio_flags_mask_t AAudioConvert_allowCapturePolicyToAudioFlagsMask(
         default:
             ALOGE("%s() 0x%08X unrecognized capture policy", __func__, policy);
             // flagsMask is not modified
-    }
+    }*/
 
     switch (spatializationBehavior) {
         case AAUDIO_UNSPECIFIED:
