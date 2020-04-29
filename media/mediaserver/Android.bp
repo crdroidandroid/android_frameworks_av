@@ -44,7 +44,7 @@ cc_binary {
     ],
 
     product_variables: {
-        aospa: {
+        lineage: {
             has_legacy_camera_hal1: {
                 overrides: ["cameraserver"],
                 cflags: ["-DNO_CAMERA_SERVER"],
