@@ -76,7 +76,7 @@
 #include "utils/TagMonitor.h"
 #include "utils/CameraThreadState.h"
 
-#include <vendor/pa/camera/motor/1.0/ICameraMotor.h>
+#include <vendor/lineage/camera/motor/1.0/ICameraMotor.h>
 
 namespace {
     const char* kPermissionServiceName = "permission";
@@ -93,7 +93,7 @@ using hardware::ICameraServiceProxy;
 using hardware::ICameraServiceListener;
 using hardware::camera::common::V1_0::CameraDeviceStatus;
 using hardware::camera::common::V1_0::TorchModeStatus;
-using vendor::pa::camera::motor::V1_0::ICameraMotor;
+using vendor::lineage::camera::motor::V1_0::ICameraMotor;
 
 // ----------------------------------------------------------------------------
 // Logging support -- this is for debugging only

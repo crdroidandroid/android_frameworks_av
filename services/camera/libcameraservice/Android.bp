@@ -108,7 +108,7 @@ cc_library_shared {
         "android.hardware.camera.device@3.3",
         "android.hardware.camera.device@3.4",
         "android.hardware.camera.device@3.5",
-        "vendor.pa.camera.motor@1.0",
+        "vendor.lineage.camera.motor@1.0",
     ],
 
     export_shared_lib_headers: [
@@ -137,7 +137,7 @@ cc_library_shared {
     ],
 
     product_variables: {
-        aospa: {
+        lineage: {
             has_legacy_camera_hal1: {
                 cflags: ["-DNO_CAMERA_SERVER"],
             },
