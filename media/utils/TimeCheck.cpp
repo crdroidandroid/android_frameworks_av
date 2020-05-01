@@ -144,6 +144,7 @@ bool TimeCheck::TimeCheckThread::threadLoop()
                 ALOGI("No HAL process pid available, skipping tombstones");
             }
             LOG_EVENT_STRING(LOGTAG_AUDIO_BINDER_TIMEOUT, tag);
+            LOG_ALWAYS_FATAL("TimeCheck timeout for %s", tag);
         }
     }
     return true;
