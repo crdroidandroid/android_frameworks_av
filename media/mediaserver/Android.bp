@@ -49,7 +49,7 @@ cc_binary {
                 overrides: ["cameraserver"],
                 cflags: ["-DNO_CAMERA_SERVER"],
                 shared_libs: [
-                    "libcameraservice",
+                    "//frameworks/av/services/camera/libcameraservice:libcameraservice",
                     "libgui",
                     "libhidlbase",
                     "libhidltransport",
