@@ -788,6 +788,15 @@ status_t ACodec::handleSetSurface(const sp<Surface> &surface) {
     std::vector<BufferInfo> &buffers = mBuffers[kPortIndexOutput];
     ALOGV("setting up surface for %zu buffers", buffers.size());
 
+    // output buffer numbers should more than minUndequeuedBuffers (allocate buffer flow ensure it)
+    // we just record new surface during free buffer action
+    if(buffers.size() <= minUndequeuedBuffers){
+        ALOGW("output buffer numbers (%zu) less than minUndequeuedBuffers (%d)",
+               buffers.size(), minUndequeuedBuffers);
+        mNativeWindow = surface;
+        return OK;
+    }
+
     err = native_window_set_buffer_count(nativeWindow, buffers.size());
     if (err != 0) {
         ALOGE("native_window_set_buffer_count failed: %s (%d)", strerror(-err),
