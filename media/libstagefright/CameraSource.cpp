@@ -582,7 +582,9 @@ status_t CameraSource::initWithCameraAccess(
     if (mSurface != NULL) {
         // This CHECK is good, since we just passed the lock/unlock
         // check earlier by calling mCamera->setParameters().
-        CHECK_EQ((status_t)OK, mCamera->setPreviewTarget(mSurface));
+        if ((err = mCamera->setPreviewTarget(mSurface)) != OK) {
+            return err;
+        }
     }
 
     // Use buffer queue to receive video buffers from camera
