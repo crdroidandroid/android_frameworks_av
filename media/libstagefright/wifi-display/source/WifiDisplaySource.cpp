@@ -78,14 +78,17 @@ WifiDisplaySource::WifiDisplaySource(
 
     mSupportedSourceVideoFormats.disableAll();
 
-    // Set default all resolutions up to 1920x1080p60
-    int32_t maxWfdRes = property_get_int32("media.wfd.max_resolution", 8); // 1920x1080p60
+    int32_t video_mode = property_get_int32("persist.wfd.legacy.video.mode", 6);
+    if ((video_mode > 9) || (video_mode < 5)) {
+         video_mode = 6;
+    }
 
     mSupportedSourceVideoFormats.setNativeResolution(
-            VideoFormats::RESOLUTION_CEA, maxWfdRes);
+            VideoFormats::RESOLUTION_CEA, video_mode);  // user selected video mode
 
+    // Enable all resolutions up selected video mode
     mSupportedSourceVideoFormats.enableResolutionUpto(
-            VideoFormats::RESOLUTION_CEA, maxWfdRes,
+            VideoFormats::RESOLUTION_CEA, video_mode,
             VideoFormats::PROFILE_CHP,  // Constrained High Profile
             VideoFormats::LEVEL_32);    // Level 3.2
 }
