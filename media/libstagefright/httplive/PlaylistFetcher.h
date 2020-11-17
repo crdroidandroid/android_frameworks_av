@@ -90,7 +90,6 @@ protected:
     virtual ~PlaylistFetcher();
     virtual void onMessageReceived(const sp<AMessage> &msg);
 
-private:
     enum {
         kMaxNumRetries         = 5,
     };
@@ -260,6 +259,7 @@ private:
 
     void updateDuration();
     void updateTargetDuration();
+    virtual bool checkSwitchBandwidth() { return false; }
 
     DISALLOW_EVIL_CONSTRUCTORS(PlaylistFetcher);
 };

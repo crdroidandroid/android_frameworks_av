@@ -1,0 +1,114 @@
+// AV  media utils extention
+// ########################################################
+
+cc_library_static {
+    name: "libavmediaextentions",
+    srcs: ["media/AVMediaUtils.cpp"],
+    shared_libs: [
+        "libhidlbase",
+        "liblog",
+        "libcutils",
+        "libutils",
+    ],
+    header_libs:[
+        "media_plugin_headers",
+        "libbase_headers",
+    ],
+
+    include_dirs: [
+        "frameworks/av/media/libavextensions",
+        "external/flac/include",
+    ],
+    cflags: [
+        "-Wno-multichar",
+        "-Werror",
+    ],
+    sanitize: {
+        cfi: true,
+    },
+}
+
+cc_library_static {
+    name: "libavextensions",
+    srcs: [
+         "stagefright/ExtendedMediaDefs.cpp",
+         "stagefright/AVUtils.cpp",
+         "stagefright/AVFactory.cpp",
+    ],
+    shared_libs: [
+         "libhidlbase",
+         "liblog",
+         "libui",
+         "libgui",
+         "libcutils",
+         "libutils",
+         "libmediadrm",
+         "libnativewindow",
+         "libcrypto",
+         "android.hardware.media.omx@1.0",
+         "libhidlbase",
+         "libhidlmemory",
+         "libaudioclient",
+         "android.hidl.allocator@1.0",
+         "android.hidl.memory@1.0",
+    ],
+    header_libs:[
+        "media_ndk_headers",
+        "media_plugin_headers",
+        "libbase_headers",
+        "libstagefright_headers",
+    ],
+    include_dirs: [
+        "frameworks/av/media/libstagefright/mpeg2ts",
+        "frameworks/av/media/libavextensions",
+        "external/flac/include",
+        "frameworks/av/media/libstagefright/omx/include/media/stagefright",
+    ],
+    cflags: [
+        "-Wno-multichar",
+        "-Werror",
+    ],
+    sanitize: {
+        cfi: true,
+    },
+}
+
+cc_library_static {
+    name: "libavmediaserviceextensions",
+    srcs: [
+         "mediaplayerservice/AVMediaServiceFactory.cpp",
+         "mediaplayerservice/AVMediaServiceUtils.cpp",
+         "mediaplayerservice/AVNuFactory.cpp",
+         "mediaplayerservice/AVNuUtils.cpp",
+    ],
+    shared_libs: [
+        "libhidlbase",
+        "liblog",
+        "libui",
+        "libgui",
+        "libcutils",
+        "libutils",
+        "libmediadrm",
+        "libnativewindow",
+        "libstagefright",
+        "android.hardware.media.omx@1.0",
+    ],
+    header_libs:[
+        "media_plugin_headers",
+        "libbase_headers",
+        "libstagefright_headers",
+    ],
+    include_dirs: [
+        "frameworks/av/media/libstagefright/rtsp",
+        "frameworks/av/media/libmediaplayerservice",
+        "frameworks/av/media/libavextensions",
+        "external/flac/include",
+    ],
+    cflags: [
+        "-Wno-multichar",
+        "-Werror",
+    ],
+    sanitize: {
+        cfi: true,
+    },
+}

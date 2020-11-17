@@ -22,6 +22,7 @@
 
 #include <media/stagefright/foundation/ADebug.h>
 #include <media/stagefright/foundation/AString.h>
+#include <mediaplayerservice/AVMediaServiceExtensions.h>
 
 #include <stdlib.h>
 
@@ -266,9 +267,16 @@ bool ASessionDescription::getDurationUs(int64_t *durationUs) const {
     }
 
     float from, to;
+#ifndef __NO_AVEXTENSIONS__
+    if (!AVMediaServiceUtils::get()->parseNTPRange(
+            value.c_str() + 4, &from, &to)) {
+        return false;
+    }
+#else
     if (!parseNTPRange(value.c_str() + 4, &from, &to)) {
         return false;
     }
+#endif
 
     *durationUs = (int64_t)((to - from) * 1E6);
 

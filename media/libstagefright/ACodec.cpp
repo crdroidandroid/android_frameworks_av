@@ -61,6 +61,9 @@
 #include "include/SharedMemoryBuffer.h"
 #include <media/stagefright/omx/OMXUtils.h>
 
+#include <stagefright/AVExtensions.h>
+
+#define QTI_FLAC_DECODER
 namespace android {
 
 using binder::Status;
@@ -604,6 +607,10 @@ ACodec::ACodec()
 ACodec::~ACodec() {
 }
 
+status_t ACodec::setupCustomCodec(status_t err, const char *, const sp<AMessage> &) {
+    return err;
+}
+
 void ACodec::initiateSetup(const sp<AMessage> &msg) {
     msg->setWhat(kWhatSetup);
     msg->setTarget(this);
@@ -851,6 +858,11 @@ status_t ACodec::setPortMode(int32_t portIndex, IOMX::PortMode mode) {
 }
 
 status_t ACodec::allocateBuffersOnPort(OMX_U32 portIndex) {
+    if (portIndex == kPortIndexInputExtradata ||
+            portIndex == kPortIndexOutputExtradata) {
+        return OK;
+    }
+
     CHECK(portIndex == kPortIndexInput || portIndex == kPortIndexOutput);
 
     CHECK(mAllocator[portIndex] == NULL);
@@ -1310,7 +1322,7 @@ status_t ACodec::allocateOutputMetadataBuffers() {
     OMX_U32 bufferCount, bufferSize, minUndequeuedBuffers;
     status_t err = configureOutputBuffersFromNativeWindow(
             &bufferCount, &bufferSize, &minUndequeuedBuffers,
-            false /* preregister */);
+            mFlags & kFlagIsSecure /* preregister */);
     if (err != OK)
         return err;
     mNumUndequeuedBuffers = minUndequeuedBuffers;
@@ -1563,6 +1575,11 @@ ACodec::BufferInfo *ACodec::dequeueBufferFromNativeWindow() {
 }
 
 status_t ACodec::freeBuffersOnPort(OMX_U32 portIndex) {
+    if (portIndex == kPortIndexInputExtradata ||
+            portIndex == kPortIndexOutputExtradata) {
+        return OK;
+    }
+
     if (portIndex == kPortIndexInput) {
         mBufferChannel->setInputBufferArray({});
     } else {
@@ -1691,7 +1708,7 @@ status_t ACodec::fillBuffer(BufferInfo *info) {
 
 status_t ACodec::setComponentRole(
         bool isEncoder, const char *mime) {
-    const char *role = GetComponentRole(isEncoder, mime);
+    const char *role = AVUtils::get()->getComponentRole(isEncoder, mime);
     if (role == NULL) {
         return BAD_VALUE;
     }
@@ -2191,7 +2208,12 @@ status_t ACodec::configureCodec(
             }
             err = setupG711Codec(encoder, sampleRate, numChannels);
         }
+#ifdef QTI_FLAC_DECODER
+//setup qti component From setupCustomCodec only when it starts with OMX.qti. otherwise create incoming component.
+    } else if (!strcasecmp(mime, MEDIA_MIMETYPE_AUDIO_FLAC) && !mComponentName.startsWith("OMX.qti.")) {
+#else
     } else if (!strcasecmp(mime, MEDIA_MIMETYPE_AUDIO_FLAC)) {
+#endif
         // numChannels needs to be set to properly communicate PCM values.
         int32_t numChannels = 2, sampleRate = 44100, compressionLevel = -1;
         if (encoder &&
@@ -2248,7 +2270,7 @@ status_t ACodec::configureCodec(
         } else {
             err = setupEAC3Codec(encoder, numChannels, sampleRate);
         }
-     } else if (!strcasecmp(mime, MEDIA_MIMETYPE_AUDIO_AC4)) {
+    } else if (!strcasecmp(mime, MEDIA_MIMETYPE_AUDIO_AC4)) {
         int32_t numChannels;
         int32_t sampleRate;
         if (!msg->findInt32("channel-count", &numChannels)
@@ -2257,6 +2279,8 @@ status_t ACodec::configureCodec(
         } else {
             err = setupAC4Codec(encoder, numChannels, sampleRate);
         }
+    } else {
+        err = setupCustomCodec(err, mime, msg);
     }
 
     if (err != OK) {
@@ -2405,10 +2429,12 @@ status_t ACodec::setOperatingRate(float rateFloat, bool isVideo) {
     }
     OMX_U32 rate;
     if (isVideo) {
-        if (rateFloat > 65535) {
-            return BAD_VALUE;
+        rateFloat = rateFloat * 65536.0f + 0.5f;
+        if (rateFloat >= (float)INT_MAX) {
+            rate = INT_MAX;
+        } else {
+            rate = (OMX_U32)rateFloat;
         }
-        rate = (OMX_U32)(rateFloat * 65536.0f + 0.5f);
     } else {
         if (rateFloat > UINT_MAX) {
             return BAD_VALUE;
@@ -3120,6 +3146,14 @@ status_t ACodec::setupRawAudioFormat(
             pcmParams.eNumData = OMX_NumericalDataSigned;
             pcmParams.nBitPerSample = 16;
             break;
+        case kAudioEncodingPcm24bitPacked:
+            pcmParams.eNumData = OMX_NumericalDataSigned;
+            pcmParams.nBitPerSample = 24;
+            break;
+        case kAudioEncodingPcm32bit:
+            pcmParams.eNumData = OMX_NumericalDataSigned;
+            pcmParams.nBitPerSample = 32;
+            break;
         default:
             return BAD_VALUE;
     }
@@ -3319,7 +3353,7 @@ static const struct VideoCodingMapEntry {
     { MEDIA_MIMETYPE_VIDEO_AV1, OMX_VIDEO_CodingAV1 },
 };
 
-static status_t GetVideoCodingTypeFromMime(
+status_t ACodec::GetVideoCodingTypeFromMime(
         const char *mime, OMX_VIDEO_CODINGTYPE *codingType) {
     for (size_t i = 0;
          i < sizeof(kVideoCodingMapEntry) / sizeof(kVideoCodingMapEntry[0]);
@@ -3432,9 +3466,18 @@ status_t ACodec::setupVideoDecoder(
         err = setVideoPortFormatType(
                 kPortIndexOutput, OMX_VIDEO_CodingUnused, colorFormat, haveNativeWindow);
         if (err != OK) {
-            ALOGW("[%s] does not support color format %d",
-                  mComponentName.c_str(), colorFormat);
-            err = setSupportedOutputFormat(!haveNativeWindow /* getLegacyFlexibleFormat */);
+            int32_t thumbnailMode = 0;
+            if (msg->findInt32("thumbnail-mode", &thumbnailMode) &&
+                thumbnailMode) {
+                err = setVideoPortFormatType(
+                kPortIndexOutput, OMX_VIDEO_CodingUnused,
+                OMX_COLOR_FormatYUV420Planar, haveNativeWindow);
+            }
+            if (err != OK) {
+                ALOGW("[%s] does not support color format %d",
+                      mComponentName.c_str(), colorFormat);
+                err = setSupportedOutputFormat(!haveNativeWindow /* getLegacyFlexibleFormat */);
+            }
         }
     } else {
         err = setSupportedOutputFormat(!haveNativeWindow /* getLegacyFlexibleFormat */);
@@ -4193,6 +4236,7 @@ status_t ACodec::setupMPEG4EncoderParameters(const sp<AMessage> &msg) {
         mpeg4type.eLevel = static_cast<OMX_VIDEO_MPEG4LEVELTYPE>(level);
     }
 
+    setBFrames(&mpeg4type);
     err = mOMXNode->setParameter(
             OMX_IndexParamVideoMpeg4, &mpeg4type, sizeof(mpeg4type));
 
@@ -4396,6 +4440,8 @@ status_t ACodec::setupAVCEncoderParameters(const sp<AMessage> &msg) {
         err = verifySupportForProfileAndLevel(kPortIndexOutput, profile, level);
 
         if (err != OK) {
+            ALOGE("%s does not support profile %x @ level %x",
+                    mComponentName.c_str(), profile, level);
             return err;
         }
 
@@ -4403,7 +4449,6 @@ status_t ACodec::setupAVCEncoderParameters(const sp<AMessage> &msg) {
         h264type.eLevel = static_cast<OMX_VIDEO_AVCLEVELTYPE>(level);
     } else {
         h264type.eProfile = OMX_VIDEO_AVCProfileBaseline;
-#if 0   /* DON'T YET DEFAULT TO HIGHEST PROFILE */
         // Use largest supported profile for AVC recording if profile is not specified.
         for (OMX_VIDEO_AVCPROFILETYPE profile : {
                 OMX_VIDEO_AVCProfileHigh, OMX_VIDEO_AVCProfileMain }) {
@@ -4412,13 +4457,14 @@ status_t ACodec::setupAVCEncoderParameters(const sp<AMessage> &msg) {
                 break;
             }
         }
-#endif
     }
 
     ALOGI("setupAVCEncoderParameters with [profile: %s] [level: %s]",
             asString(h264type.eProfile), asString(h264type.eLevel));
 
-    if (h264type.eProfile == OMX_VIDEO_AVCProfileBaseline) {
+    if (h264type.eProfile == OMX_VIDEO_AVCProfileBaseline ||
+        h264type.eProfile == static_cast<OMX_VIDEO_AVCPROFILETYPE>(
+            OMX_VIDEO_AVCProfileConstrainedBaseline)) {
         h264type.nSliceHeaderSpacing = 0;
         h264type.bUseHadamard = OMX_TRUE;
         h264type.nRefFrames = 1;
@@ -4436,7 +4482,9 @@ status_t ACodec::setupAVCEncoderParameters(const sp<AMessage> &msg) {
         h264type.bDirectSpatialTemporal = OMX_FALSE;
         h264type.nCabacInitIdc = 0;
     } else if (h264type.eProfile == OMX_VIDEO_AVCProfileMain ||
-            h264type.eProfile == OMX_VIDEO_AVCProfileHigh) {
+            h264type.eProfile == OMX_VIDEO_AVCProfileHigh ||
+            h264type.eProfile == static_cast<OMX_VIDEO_AVCPROFILETYPE>(
+                OMX_VIDEO_AVCProfileConstrainedHigh)) {
         h264type.nSliceHeaderSpacing = 0;
         h264type.bUseHadamard = OMX_TRUE;
         int32_t maxBframes = 0;
@@ -5205,6 +5253,12 @@ status_t ACodec::getPortFormat(OMX_U32 portIndex, sp<AMessage> &notify) {
                     } else if (params.eNumData == OMX_NumericalDataFloat
                             && params.nBitPerSample == 32u) {
                         encoding = kAudioEncodingPcmFloat;
+                    } else if (params.eNumData == OMX_NumericalDataSigned
+                            && params.nBitPerSample == 24u) {
+                        encoding = kAudioEncodingPcm24bitPacked;
+                    } else if (params.eNumData == OMX_NumericalDataSigned
+                            && params.nBitPerSample == 32u) {
+                        encoding = kAudioEncodingPcm32bit;
                     } else if (params.nBitPerSample != 16u
                             || params.eNumData != OMX_NumericalDataSigned) {
                         ALOGE("unsupported PCM port: %s(%d), %s(%d) mode ",
@@ -5614,6 +5668,7 @@ void ACodec::sendFormatChange() {
         }
         mSkipCutBuffer = new SkipCutBuffer(mEncoderDelay, mEncoderPadding, channelCount);
     }
+
 
     // mLastOutputFormat is not used when tunneled; doing this just to stay consistent
     mLastOutputFormat = mOutputFormat;
@@ -6308,7 +6363,7 @@ bool ACodec::BaseState::onOMXFillBufferDone(
 
         case RESUBMIT_BUFFERS:
         {
-            if (rangeLength == 0 && (!(flags & OMX_BUFFERFLAG_EOS)
+            if (rangeLength == 0 && !((flags & OMX_BUFFERFLAG_EOS)
                     || mCodec->mPortEOS[kPortIndexOutput])) {
                 ALOGV("[%s] calling fillBuffer %u",
                      mCodec->mComponentName.c_str(), info->mBufferID);
@@ -6330,7 +6385,14 @@ bool ACodec::BaseState::onOMXFillBufferDone(
                 }
                 mCodec->sendFormatChange();
             }
-            buffer->setFormat(mCodec->mOutputFormat);
+
+            sp<AMessage> updatedFormat = mCodec->mOutputFormat;
+            if (mCodec->mIsVideo && (flags & OMX_BUFFERFLAG_EXTRADATA)) {
+                updatedFormat = AVUtils::get()->fillExtradata(
+                        mCodec->mBuffers[kPortIndexOutputExtradata].editItemAt(index).mCodecData,
+                        mCodec->mOutputFormat);
+            }
+            buffer->setFormat(updatedFormat);
 
             if (mCodec->usingSecureBufferOnEncoderOutput()) {
                 native_handle_t *handle = NULL;
@@ -6420,9 +6482,14 @@ void ACodec::BaseState::onOutputBufferDrained(const sp<AMessage> &msg) {
         mCodec->signalError(OMX_ErrorUndefined, FAILED_TRANSACTION);
         return;
     }
+
+    int64_t timeUs = -1;
+    buffer->meta()->findInt64("timeUs", &timeUs);
+    bool skip = mCodec->getDSModeHint(msg, timeUs);
+
     info->mData = buffer;
     int32_t render;
-    if (mCodec->mNativeWindow != NULL
+    if (!skip && mCodec->mNativeWindow != NULL
             && msg->findInt32("render", &render) && render != 0
             && !discarded && buffer->size() != 0) {
         ATRACE_NAME("render");
@@ -6670,15 +6737,24 @@ bool ACodec::UninitializedState::onAllocateComponent(const sp<AMessage> &msg) {
     sp<RefBase> obj;
     CHECK(msg->findObject("codecInfo", &obj));
     sp<MediaCodecInfo> info = (MediaCodecInfo *)obj.get();
-    if (info == nullptr) {
-        ALOGE("Unexpected nullptr for codec information");
-        mCodec->signalError(OMX_ErrorUndefined, UNKNOWN_ERROR);
-        return false;
-    }
-    AString owner = (info->getOwnerName() == nullptr) ? "default" : info->getOwnerName();
-
+    AString owner = "default";
     AString componentName;
     CHECK(msg->findString("componentName", &componentName));
+
+    //make sure if the component name contains qcom/qti, we don't return error
+    //as these components are not present in media_codecs.xml and MediaCodecList won't find
+    //these component by findCodecByName.
+    //Video and Flac decoder are present in list so exclude them.
+    if ((!(componentName.find("qcom", 0) > 0 || componentName.find("qti", 0) > 0) ||
+          componentName.find("video", 0) > 0 || componentName.find("flac", 0) > 0) &&
+          !(componentName.find("tme",0) > 0)) {
+        if (info == nullptr) {
+            ALOGE("Unexpected nullptr for codec information");
+            mCodec->signalError(OMX_ErrorUndefined, UNKNOWN_ERROR);
+            return false;
+        }
+        owner = (info->getOwnerName() == nullptr) ? "default" : info->getOwnerName();
+    }
 
     sp<CodecObserver> observer = new CodecObserver(notify);
     sp<IOMX> omx;
@@ -7071,6 +7147,12 @@ void ACodec::LoadedToIdleState::stateEntered() {
         if (mCodec->allYourBuffersAreBelongToUs(kPortIndexOutput)) {
             mCodec->freeBuffersOnPort(kPortIndexOutput);
         }
+        if (mCodec->allYourBuffersAreBelongToUs(kPortIndexInputExtradata)) {
+            mCodec->freeBuffersOnPort(kPortIndexInputExtradata);
+        }
+        if (mCodec->allYourBuffersAreBelongToUs(kPortIndexOutputExtradata)) {
+            mCodec->freeBuffersOnPort(kPortIndexOutputExtradata);
+        }
 
         mCodec->changeState(mCodec->mLoadedState);
     }
@@ -7085,6 +7167,11 @@ status_t ACodec::LoadedToIdleState::allocateBuffers() {
     err = mCodec->allocateBuffersOnPort(kPortIndexOutput);
     if (err != OK) {
         return err;
+    }
+    err = mCodec->allocateBuffersOnPort(kPortIndexInputExtradata);
+    err = mCodec->allocateBuffersOnPort(kPortIndexOutputExtradata);
+    if (err != OK) {
+        err = OK; // Ignore Extradata buffer allocation failure
     }
 
     mCodec->mCallback->onStartCompleted();
@@ -7466,6 +7553,22 @@ status_t ACodec::setParameters(const sp<AMessage> &params) {
 
             return err;
         }
+    }
+
+    int32_t nIFrameInterval = 0, nPFrames = 0, nBFrames = 0;
+    if (params->findInt32(KEY_I_FRAME_INTERVAL, &nIFrameInterval)) {
+        if (!params->findInt32(KEY_MAX_B_FRAMES, &nBFrames)) {
+            sp<AMessage> format = new AMessage;
+            getVendorParameters(kPortIndexOutput, format);
+            format->findInt32("vendor.qti-ext-enc-intra-period.n-bframes", &nBFrames);
+        }
+
+        nPFrames = setPFramesSpacing(nIFrameInterval, mFps, nBFrames);
+
+        sp<AMessage> updatedFormat = new AMessage;
+        updatedFormat->setInt32("vendor.qti-ext-enc-intra-period.n-pframes", nPFrames);
+        updatedFormat->setInt32("vendor.qti-ext-enc-intra-period.n-bframes", nBFrames);
+        setVendorParameters(updatedFormat);
     }
 
     int64_t timeOffsetUs;
@@ -8010,6 +8113,13 @@ void ACodec::onSignalEndOfInputStream() {
     mCallback->onSignaledInputEOS(err);
 }
 
+sp<IOMXObserver> ACodec::createObserver() {
+    sp<AMessage> notify = new AMessage(kWhatOMXMessageList, this);
+    notify->setInt32("generation", this->mNodeGeneration + 1);
+    sp<CodecObserver> observer = new CodecObserver(notify);
+    return observer;
+}
+
 void ACodec::forceStateTransition(int generation) {
     if (generation != mStateGeneration) {
         ALOGV("Ignoring stale force state transition message: #%d (now #%d)",
@@ -8328,6 +8438,15 @@ void ACodec::ExecutingToIdleState::changeStateIfWeOwnAllBuffers() {
             if (err == OK) {
                 err = err2;
             }
+            status_t err3 = mCodec->freeBuffersOnPort(kPortIndexInputExtradata);
+            if (err == OK) {
+                err = err3;
+            }
+            status_t err4 = mCodec->freeBuffersOnPort(kPortIndexOutputExtradata);
+            if (err == OK) {
+                err = err4;
+            }
+
         }
 
         if ((mCodec->mFlags & kFlagPushBlankBuffersToNativeWindowOnShutdown)
@@ -8599,7 +8718,7 @@ void ACodec::FlushingState::changeStateIfWeOwnAllBuffers() {
 status_t ACodec::queryCapabilities(
         const char* owner, const char* name, const char* mime, bool isEncoder,
         MediaCodecInfo::CapabilitiesWriter* caps) {
-    const char *role = GetComponentRole(isEncoder, mime);
+    const char *role = AVUtils::get()->getComponentRole(isEncoder, mime);
     if (role == NULL) {
         return BAD_VALUE;
     }

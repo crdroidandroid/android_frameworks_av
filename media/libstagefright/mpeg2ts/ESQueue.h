@@ -20,6 +20,8 @@
 
 #include <media/stagefright/foundation/ABase.h>
 #include <media/stagefright/foundation/AMessage.h>
+#include <media/stagefright/foundation/ABuffer.h>
+#include <media/stagefright/MetaData.h>
 #include <utils/Errors.h>
 #include <utils/List.h>
 #include <utils/RefBase.h>
@@ -54,6 +56,7 @@ struct ElementaryStreamQueue {
         kFlag_SampleEncryptedData = 4,
     };
     explicit ElementaryStreamQueue(Mode mode, uint32_t flags = 0);
+    virtual ~ElementaryStreamQueue() {};
 
     status_t appendData(const void *data, size_t size,
             int64_t timeUs, int32_t payloadOffset = 0,
@@ -78,7 +81,7 @@ struct ElementaryStreamQueue {
 
     void signalNewSampleAesKey(const sp<AMessage> &keyItem);
 
-private:
+protected:
     struct RangeInfo {
         int64_t mTimestampUs;
         size_t mLength;
@@ -134,6 +137,7 @@ private:
 
     sp<ABuffer> dequeueScrambledAccessUnit();
 
+private:
     DISALLOW_EVIL_CONSTRUCTORS(ElementaryStreamQueue);
 };
 

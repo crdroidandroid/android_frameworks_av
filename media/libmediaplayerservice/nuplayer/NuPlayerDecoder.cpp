@@ -39,6 +39,8 @@
 #include <media/stagefright/MediaCodec.h>
 #include <media/stagefright/MediaDefs.h>
 #include <media/stagefright/MediaErrors.h>
+#include <stagefright/AVExtensions.h>
+#include "mediaplayerservice/AVNuExtensions.h"
 #include <media/stagefright/SurfaceUtils.h>
 #include <gui/Surface.h>
 
@@ -106,14 +108,14 @@ NuPlayer::Decoder::~Decoder() {
     releaseAndResetMediaBuffers();
 }
 
-sp<AMessage> NuPlayer::Decoder::getStats() const {
+sp<AMessage> NuPlayer::Decoder::getStats() {
 
+    Mutex::Autolock autolock(mStatsLock);
     mStats->setInt64("frames-total", mNumFramesTotal);
     mStats->setInt64("frames-dropped-input", mNumInputFramesDropped);
     mStats->setInt64("frames-dropped-output", mNumOutputFramesDropped);
     mStats->setFloat("frame-rate-total", mFrameRateTotal);
 
-    // i'm mutexed right now.
     // make our own copy, so we aren't victim to any later changes.
     sp<AMessage> copiedStats = mStats->dup();
     return copiedStats;
@@ -300,8 +302,11 @@ void NuPlayer::Decoder::onConfigure(const sp<AMessage> &format) {
     mComponentName.append(" decoder");
     ALOGV("[%s] onConfigure (surface=%p)", mComponentName.c_str(), mSurface.get());
 
+    mCodec = AVUtils::get()->createCustomComponentByName(mCodecLooper, mime.c_str(), false /* encoder */, format);
+    if (mCodec == NULL) {
     mCodec = MediaCodec::CreateByType(
             mCodecLooper, mime.c_str(), false /* encoder */, NULL /* err */, mPid, mUid);
+    }
     int32_t secure = 0;
     if (format->findInt32("secure", &secure) && secure != 0) {
         if (mCodec != NULL) {
@@ -362,13 +367,17 @@ void NuPlayer::Decoder::onConfigure(const sp<AMessage> &format) {
     CHECK_EQ((status_t)OK, mCodec->getOutputFormat(&mOutputFormat));
     CHECK_EQ((status_t)OK, mCodec->getInputFormat(&mInputFormat));
 
-    mStats->setString("mime", mime.c_str());
-    mStats->setString("component-name", mComponentName.c_str());
+    {
+        Mutex::Autolock autolock(mStatsLock);
+        mStats->setString("mime", mime.c_str());
+        mStats->setString("component-name", mComponentName.c_str());
+    }
 
     if (!mIsAudio) {
         int32_t width, height;
         if (mOutputFormat->findInt32("width", &width)
                 && mOutputFormat->findInt32("height", &height)) {
+            Mutex::Autolock autolock(mStatsLock);
             mStats->setInt32("width", width);
             mStats->setInt32("height", height);
         }
@@ -431,6 +440,7 @@ void NuPlayer::Decoder::onSetParameters(const sp<AMessage> &params) {
 
     if (needAdjustLayers) {
         float decodeFrameRate = mFrameRateTotal;
+        float operating_rate;
         // enable temporal layering optimization only if we know the layering depth
         if (mNumVideoTemporalLayerTotal > 1) {
             int32_t layerId;
@@ -452,7 +462,10 @@ void NuPlayer::Decoder::onSetParameters(const sp<AMessage> &params) {
         }
 
         sp<AMessage> codecParams = new AMessage();
-        codecParams->setFloat("operating-rate", decodeFrameRate * mPlaybackSpeed);
+        operating_rate = decodeFrameRate * mPlaybackSpeed;
+        if ((int)operating_rate > 100)
+            mRequestInputBufferDelay = (1000.f/operating_rate) * 1000LL;
+        codecParams->setFloat("operating-rate", operating_rate);
         mCodec->setParameters(codecParams);
     }
 }
@@ -778,6 +791,12 @@ bool NuPlayer::Decoder::handleAnOutputBuffer(
         }
 
         mSkipRenderingUntilMediaTimeUs = -1;
+    } else if ((flags & MediaCodec::BUFFER_FLAG_DATACORRUPT) &&
+            AVNuUtils::get()->dropCorruptFrame()) {
+        ALOGV("[%s] dropping corrupt buffer at time %lld as requested.",
+                     mComponentName.c_str(), (long long)timeUs);
+        reply->post();
+        return true;
     }
 
     // wait until 1st frame comes out to signal resume complete
@@ -799,6 +818,7 @@ void NuPlayer::Decoder::handleOutputFormatChange(const sp<AMessage> &format) {
         int32_t width, height;
         if (format->findInt32("width", &width)
                 && format->findInt32("height", &height)) {
+            Mutex::Autolock autolock(mStatsLock);
             mStats->setInt32("width", width);
             mStats->setInt32("height", height);
         }
@@ -894,6 +914,7 @@ status_t NuPlayer::Decoder::fetchInputData(sp<AMessage> &reply) {
                     // treat seamless format change separately
                     formatChange = !seamlessFormatChange;
                 }
+                AVNuUtils::get()->checkFormatChange(&formatChange, accessUnit);
 
                 // For format or time change, return EOS to queue EOS input,
                 // then wait for EOS on output.
@@ -1038,6 +1059,14 @@ bool NuPlayer::Decoder::onInputBufferFetched(const sp<AMessage> &msg) {
                         mComponentName.c_str(), (long long)resumeAtMediaTimeUs);
                 mSkipRenderingUntilMediaTimeUs = resumeAtMediaTimeUs;
             }
+        }
+
+        sp<ABuffer> hdr10PlusInfo;
+        if (buffer->meta()->findBuffer("hdr10-plus-info", &hdr10PlusInfo) &&
+                hdr10PlusInfo != NULL) {
+           sp<AMessage> hdr10PlusMsg = new AMessage;
+           hdr10PlusMsg->setBuffer("hdr10-plus-info", hdr10PlusInfo);
+           mCodec->setParameters(hdr10PlusMsg);
         }
 
         int64_t timeUs = 0;

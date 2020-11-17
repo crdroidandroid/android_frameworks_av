@@ -229,6 +229,7 @@ enum {
     // Key for ALAC Magic Cookie
     kKeyAlacMagicCookie  = 'almc', // raw data
 
+    kKeyFeatureNalLengthBitstream = 'nlbs', // int32_t key to check nal length bistream
     // AC-4 AudioPresentationInfo
     kKeyAudioPresentationInfo = 'audP',  // raw data
 

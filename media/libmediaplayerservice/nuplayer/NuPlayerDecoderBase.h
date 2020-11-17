@@ -47,7 +47,7 @@ struct NuPlayer::DecoderBase : public AHandler {
     void signalResume(bool notifyComplete);
     void initiateShutdown();
 
-    virtual sp<AMessage> getStats() const {
+    virtual sp<AMessage> getStats() {
         return mStats;
     }
 
@@ -86,8 +86,10 @@ protected:
 
     sp<AMessage> mNotify;
     int32_t mBufferGeneration;
+    int64_t mRequestInputBufferDelay;
     bool mPaused;
     sp<AMessage> mStats;
+    Mutex mStatsLock;
 
 private:
     enum {

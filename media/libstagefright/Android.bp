@@ -101,6 +101,7 @@ cc_library_static {
         "-Werror",
         "-Wno-error=deprecated-declarations",
         "-Wall",
+        "-D__NO_AVEXTENSIONS__",
     ],
 
     sanitize: {
@@ -179,6 +180,7 @@ cc_library {
         "libbinder",
         "libcamera_client",
         "libcutils",
+        "libcrypto",
         "libdl",
         "libdl_android",
         "libdrmframework",
@@ -201,6 +203,7 @@ cc_library {
         "libhidlbase",
         "libhidlmemory",
         "android.hidl.allocator@1.0",
+        "android.hidl.memory@1.0",
         "android.hardware.cas.native@1.0",
         "android.hardware.media.omx@1.0",
     ],
@@ -218,6 +221,10 @@ cc_library {
         "libFLAC",
     ],
 
+    whole_static_libs: [
+        "libavextensions"
+    ],
+
     header_libs:[
         "libnativeloader-dummy-headers",
         "libstagefright_xmlparser_headers",
@@ -233,6 +240,12 @@ cc_library {
 
     export_include_dirs: [
         "include",
+
+    ],
+
+    include_dirs: [
+        "frameworks/av/media/libavextensions",
+        "frameworks/av/media/libstagefright/mpeg2ts",
     ],
 
     cflags: [
@@ -300,6 +313,7 @@ cc_library_static {
         "-Werror",
         "-Wno-error=deprecated-declarations",
         "-Wall",
+        "-D__NO_AVEXTENSIONS__",
     ],
 
     product_variables: {

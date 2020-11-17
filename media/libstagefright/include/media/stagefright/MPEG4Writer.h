@@ -87,6 +87,7 @@ private:
     sp<MetaData> mStartMeta;
     status_t mInitCheck;
     bool mIsRealTimeRecording;
+protected:
     bool mUse4ByteNalLength;
     bool mUse32BitOffset;
     bool mIsFileSizeLimitExplicitlyRequested;
@@ -124,9 +125,10 @@ private:
 
     sp<AMessage> mMetaKeys;
 
-    void setStartTimestampUs(int64_t timeUs);
+    void setStartTimestampUs(int64_t timeUs, int64_t *trackStartTime);
     int64_t getStartTimestampUs();  // Not const
     int32_t getStartTimeOffsetBFramesUs();
+    int64_t getStartTimeOffsetTimeUs(int64_t startTime);
     status_t startTracks(MetaData *params);
     size_t numTracks();
     int64_t estimateMoovBoxSize(int32_t bitRate);
@@ -256,7 +258,8 @@ private:
     off64_t addSample_l(
             MediaBuffer *buffer, bool usePrefix,
             uint32_t tiffHdrOffset, size_t *bytesWritten);
-    void addLengthPrefixedSample_l(MediaBuffer *buffer);
+    static void StripStartcode(MediaBuffer *buffer);
+    virtual void addLengthPrefixedSample_l(MediaBuffer *buffer);
     void addMultipleLengthPrefixedSamples_l(MediaBuffer *buffer);
     uint16_t addProperty_l(const ItemProperty &);
     uint16_t addItem_l(const ItemInfo &);

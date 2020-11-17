@@ -62,11 +62,13 @@ struct MediaCodec : public AHandler {
     };
 
     enum BufferFlags {
-        BUFFER_FLAG_SYNCFRAME     = 1,
-        BUFFER_FLAG_CODECCONFIG   = 2,
-        BUFFER_FLAG_EOS           = 4,
+        BUFFER_FLAG_SYNCFRAME   = 1,
+        BUFFER_FLAG_CODECCONFIG = 2,
+        BUFFER_FLAG_EOS         = 4,
         BUFFER_FLAG_PARTIAL_FRAME = 8,
         BUFFER_FLAG_MUXER_DATA    = 16,
+        BUFFER_FLAG_EXTRADATA = 0x1000,
+        BUFFER_FLAG_DATACORRUPT = 0x2000,
     };
 
     enum {
@@ -392,7 +394,7 @@ private:
 
     void PostReplyWithError(const sp<AReplyToken> &replyID, int32_t err);
 
-    status_t init(const AString &name);
+    status_t init(const AString &name, bool nameIsType = false);
 
     void setState(State newState);
     void returnBuffersToCodec(bool isReclaim = false);

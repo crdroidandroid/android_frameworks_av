@@ -27,6 +27,8 @@
 #include <media/stagefright/foundation/hexdump.h>
 #include <media/stagefright/foundation/ByteUtils.h>
 
+#include <mediaplayerservice/AVMediaServiceExtensions.h>
+
 namespace android {
 
 AH263Assembler::AH263Assembler(const sp<AMessage> &notify)
@@ -63,7 +65,10 @@ ARTPAssembler::AssemblyStatus AH263Assembler::addPacket(
             if ((uint32_t)(*it)->int32Data() >= mNextExpectedSeqNo) {
                 break;
             }
-
+#ifndef __NO_AVEXTENSIONS__
+            AVMediaServiceUtils::get()->addH263AdvancedPacket(
+                    *it, &mPackets, mAccessUnitRTPTime);
+#endif
             it = queue->erase(it);
         }
 

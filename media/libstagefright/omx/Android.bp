@@ -1,10 +1,5 @@
-cc_library_shared {
-    name: "libstagefright_omx",
-    vendor_available: true,
-    vndk: {
-        enabled: true,
-    },
-
+cc_defaults {
+    name: "libstagefright_omx_defaults",
     srcs: [
         "OMXMaster.cpp",
         "OMXNodeInstance.cpp",
@@ -31,6 +26,33 @@ cc_library_shared {
         "media_plugin_headers",
     ],
 
+    sanitize: {
+        misc_undefined: [
+            "signed-integer-overflow",
+            "unsigned-integer-overflow",
+        ],
+        cfi: true,
+        diag: {
+            cfi: true,
+        },
+    },
+}
+
+cc_library_shared {
+    name: "libstagefright_omx",
+    vendor_available: true,
+    vndk: {
+        enabled: true,
+    },
+
+    export_shared_lib_headers: [
+        "libmedia_omx",
+        "libstagefright_foundation",
+        "libstagefright_xmlparser",
+        "libutils",
+    ],
+
+    defaults: ["libstagefright_omx_defaults"],
     shared_libs: [
         "libbase",
         "libbinder",
@@ -50,18 +72,65 @@ cc_library_shared {
         "android.hardware.media.omx@1.0",
         "android.hardware.graphics.bufferqueue@1.0",
     ],
-
-    export_shared_lib_headers: [
-        "libstagefright_foundation",
-        "libstagefright_xmlparser",
-        "libutils",
-    ],
-
     cflags: [
         "-Werror",
         "-Wall",
         "-Wno-unused-parameter",
         "-Wno-documentation",
+    ],
+    sanitize: {
+        misc_undefined: [
+            "signed-integer-overflow",
+            "unsigned-integer-overflow",
+        ],
+        cfi: true,
+    },
+}
+
+cc_library_shared {
+    name: "libstagefright_omx_ext",
+    vendor: true,
+    vndk: {
+        enabled: true,
+        extends: "libstagefright_omx",
+    },
+    defaults: ["libstagefright_omx_defaults"],
+
+    export_shared_lib_headers: [
+        "libmedia_omx",
+        "libstagefright_foundation_ext",
+        "libstagefright_xmlparser",
+        "libutils",
+    ],
+
+    shared_libs: [
+        "libbase",
+        "libbinder",
+        "libmedia_omx",
+        "libutils",
+        "liblog",
+        "libui",
+        "libgui_vendor",
+        "libcutils",
+        "libstagefright_foundation_ext",
+        "libstagefright_bufferqueue_helper",
+        "libstagefright_xmlparser",
+        "libdl",
+        "libhidlbase",
+        "libhidlmemory",
+        "libhidltransport",
+        "libnativewindow", // TODO(b/62923479): use header library
+        "libvndksupport",
+        "android.hardware.media.omx@1.0",
+        "android.hardware.graphics.bufferqueue@1.0",
+        "libstagefright_softomx",
+    ],
+    cflags: [
+        "-Werror",
+        "-Wall",
+        "-Wno-unused-parameter",
+        "-Wno-documentation",
+        "-D__ANDROID_VNDK_EXT__",
     ],
 
     product_variables: {
@@ -209,9 +278,17 @@ cc_library_shared {
     },
     double_loadable: true,
     srcs: ["OMXUtils.cpp"],
+    include_dirs: [
+        "frameworks/av/media/libstagefright/include",
+    ],
     export_include_dirs: [
         "include",
     ],
+    target: {
+        vendor: {
+            cflags: ["-D__ANDROID_VNDK__"],
+        },
+    },
     header_libs: [
         "media_plugin_headers",
     ],

@@ -31,11 +31,14 @@ cc_library_static {
         "frameworks/av/media/libstagefright/timedtext",
         "frameworks/av/media/ndk",
         "frameworks/base/core/jni",
+        "frameworks/av/media/libavextensions",
+        "frameworks/av/media/libmediaplayerservice",
     ],
 
     cflags: [
         "-Werror",
         "-Wall",
+        "-D__NO_AVEXTENSIONS__",
     ],
 
     product_variables: {

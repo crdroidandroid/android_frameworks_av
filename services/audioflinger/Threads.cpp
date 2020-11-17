@@ -5517,6 +5517,9 @@ AudioFlinger::DirectOutputThread::DirectOutputThread(const sp<AudioFlinger>& aud
         AudioStreamOut* output, audio_io_handle_t id, audio_devices_t device,
         ThreadBase::type_t type, bool systemReady)
     :   PlaybackThread(audioFlinger, output, id, device, type, systemReady)
+        , mVolumeShaperActive(false)
+        , mFramesWrittenAtStandby(0)
+        , mFramesWrittenForSleep(0)
 {
     setMasterBalance(audioFlinger->getMasterBalance_l());
 }
@@ -6517,6 +6520,12 @@ void AudioFlinger::MixerThread::onIdleMixer()
         state->mColdFutexAddr = &mFastMixerFutex;
         state->mColdGen++;
         mFastMixerFutex = 0;
+
+        // cold idle fastmixer only after draining a whole pipe sink
+        uint32_t delayMs =
+            (uint32_t)((mNormalFrameCount + mFrameCount) * 1000 / mSampleRate);
+        usleep(delayMs * 1000);
+
         sq->end();
         sq->push(FastMixerStateQueue::BLOCK_UNTIL_ACKED);
     } else {

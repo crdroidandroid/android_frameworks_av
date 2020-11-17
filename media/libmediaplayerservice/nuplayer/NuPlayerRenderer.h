@@ -72,6 +72,9 @@ struct NuPlayer::Renderer : public AHandler {
     status_t getCurrentPosition(int64_t *mediaUs);
     int64_t getVideoLateByUs();
 
+    bool isVideoPrerollCompleted() const;
+    bool isVideoSampleReceived() const;
+
     status_t openAudioSink(
             const sp<AMessage> &format,
             bool offloadOnly,
@@ -98,6 +101,7 @@ struct NuPlayer::Renderer : public AHandler {
         kWhatMediaRenderingStart      = 'mdrd',
         kWhatAudioTearDown            = 'adTD',
         kWhatAudioOffloadPauseTimeout = 'aOPT',
+        kWhatVideoPrerollComplete     = 'vdpC',
     };
 
     enum AudioTearDownReason {
@@ -111,7 +115,6 @@ protected:
 
     virtual void onMessageReceived(const sp<AMessage> &msg);
 
-private:
     enum {
         kWhatDrainAudioQueue     = 'draA',
         kWhatDrainVideoQueue     = 'draV',
@@ -267,7 +270,7 @@ private:
     int32_t getDrainGeneration(bool audio);
     bool getSyncQueues();
     void onAudioTearDown(AudioTearDownReason reason);
-    status_t onOpenAudioSink(
+    virtual status_t onOpenAudioSink(
             const sp<AMessage> &format,
             bool offloadOnly,
             bool hasVideo,
@@ -296,6 +299,9 @@ private:
     int64_t getDurationUsIfPlayedAtSampleRate(uint32_t numFrames);
 
     DISALLOW_EVIL_CONSTRUCTORS(Renderer);
+
+private:
+    bool mNeedVideoClearAnchor;
 };
 
 } // namespace android

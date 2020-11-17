@@ -61,8 +61,12 @@
 
 #include "ESDS.h"
 #include <media/stagefright/Utils.h>
+#include "mediaplayerservice/AVNuExtensions.h"
 
 namespace android {
+
+// maximum time to pause renderer to wait for video pre-roll
+static constexpr int64_t kDefaultVideoPrerollMaxUs = 2000000LL;
 
 struct NuPlayer::Action : public RefBase {
     Action() {}
@@ -71,6 +75,25 @@ struct NuPlayer::Action : public RefBase {
 
 private:
     DISALLOW_EVIL_CONSTRUCTORS(Action);
+};
+
+struct NuPlayer::InstantiateDecoderAction : public Action {
+    explicit InstantiateDecoderAction(bool audio, sp<DecoderBase> (*decoder), bool checkAudioModeChange)
+        : mAudio(audio),
+          mDecoder(*decoder),
+          mCheckAudioModeChange(checkAudioModeChange) {
+    }
+
+    virtual void execute(NuPlayer *player) {
+        player->instantiateDecoder(mAudio, &mDecoder, mCheckAudioModeChange);
+    }
+
+private:
+    bool mAudio;
+    sp<DecoderBase> (&mDecoder);
+    bool mCheckAudioModeChange;
+
+    DISALLOW_EVIL_CONSTRUCTORS(InstantiateDecoderAction);
 };
 
 struct NuPlayer::SeekAction : public Action {
@@ -238,7 +261,7 @@ void NuPlayer::setDataSourceAsync(const sp<IStreamSource> &source) {
     mDataSourceType = DATA_SOURCE_TYPE_STREAM;
 }
 
-static bool IsHTTPLiveURL(const char *url) {
+bool NuPlayer::IsHTTPLiveURL(const char *url) {
     if (!strncasecmp("http://", url, 7)
             || !strncasecmp("https://", url, 8)
             || !strncasecmp("file://", url, 7)) {
@@ -1033,6 +1056,16 @@ void NuPlayer::onMessageReceived(const sp<AMessage> &msg) {
                 if (mSourceFlags & Source::FLAG_DYNAMIC_DURATION) {
                     schedulePollDuration();
                 }
+
+                // Pause the renderer till video queue pre-rolls
+                if (!mPaused && mVideoDecoder != NULL && mAudioDecoder != NULL
+                   && !mRenderer->isVideoSampleReceived()) {
+                    ALOGI("NOTE: Pausing Renderer after decoders instantiated..");
+                    mRenderer->pause();
+                    // wake up renderer if timed out
+                    sp<AMessage> msg = new AMessage(kWhatWakeupRendererFromPreroll, this);
+                    msg->post(kDefaultVideoPrerollMaxUs);
+                }
             }
 
             status_t err;
@@ -1135,19 +1168,31 @@ void NuPlayer::onMessageReceived(const sp<AMessage> &msg) {
                 if (audio) {
                     Mutex::Autolock autoLock(mDecoderLock);
                     mAudioDecoder.clear();
-                    mAudioDecoderError = false;
                     ++mAudioDecoderGeneration;
 
                     CHECK_EQ((int)mFlushingAudio, (int)SHUTTING_DOWN_DECODER);
                     mFlushingAudio = SHUT_DOWN;
+                    // if this shutdown is called due to audio decoder encountered error
+                    // and stream contains video source and video already reached EOS
+                    // notify NuPlayerDriver to complete playback
+                    if (mAudioDecoderError && mVideoEOS) {
+                        notifyListener(MEDIA_PLAYBACK_COMPLETE, 0, 0);
+                    }
+                    mAudioDecoderError = false;
                 } else {
                     Mutex::Autolock autoLock(mDecoderLock);
                     mVideoDecoder.clear();
-                    mVideoDecoderError = false;
                     ++mVideoDecoderGeneration;
 
                     CHECK_EQ((int)mFlushingVideo, (int)SHUTTING_DOWN_DECODER);
                     mFlushingVideo = SHUT_DOWN;
+                    // if this shutdown is called due to video decoder encountered error
+                    // and stream contains audio source and audio already reached EOS
+                    // notify NuPlayerDriver to complete playback
+                    if (mVideoDecoderError && mAudioEOS) {
+                        notifyListener(MEDIA_PLAYBACK_COMPLETE, 0, 0);
+                    }
+                    mVideoDecoderError = false;
                 }
 
                 finishFlushIfPossible();
@@ -1205,6 +1250,14 @@ void NuPlayer::onMessageReceived(const sp<AMessage> &msg) {
                             // When both audio and video have error, or this stream has only audio
                             // which has error, notify client of error.
                             notifyListener(MEDIA_ERROR, MEDIA_ERROR_UNKNOWN, err);
+                        } else if (mVideoEOS) {
+                            // if stream has video source and video already reached EOS, then
+                            // notify MEDIA_PLAYBACK_COMPLETE
+                            // NOTE: call audio flush and shutdown is asynchronized, video eos may
+                            // reached after this check and before audio decoder shutdown, need to
+                            // check this state again after audio decoder shutdown
+                            ALOGV("Audio encountered error, while video already reached EOS");
+                            notifyListener(MEDIA_PLAYBACK_COMPLETE, 0, 0);
                         } else {
                             // Only audio track has error. Video track could be still good to play.
                             notifyListener(MEDIA_INFO, MEDIA_INFO_PLAY_AUDIO_ERROR, err);
@@ -1216,9 +1269,23 @@ void NuPlayer::onMessageReceived(const sp<AMessage> &msg) {
                             // When both audio and video have error, or this stream has only video
                             // which has error, notify client of error.
                             notifyListener(MEDIA_ERROR, MEDIA_ERROR_UNKNOWN, err);
+                        } else if (mAudioEOS) {
+                            // if stream has audio source and audio already reached EOS, then
+                            // notify MEDIA_PLAYBACK_COMPLETE
+                            // NOTE: call video flush and shutdown is asynchronized, audio eos may
+                            // reached after this check and before video decoder shutdown, need to
+                            // check this state again after video decoder shutdown
+                            ALOGV("Video encountered error, while audio already reached EOS");
+                            notifyListener(MEDIA_PLAYBACK_COMPLETE, 0, 0);
                         } else {
                             // Only video track has error. Audio track could be still good to play.
                             notifyListener(MEDIA_INFO, MEDIA_INFO_PLAY_VIDEO_ERROR, err);
+                        }
+                        if (mRenderer != NULL && !mRenderer->isVideoPrerollCompleted()) {
+                            // wake up renderer immediately. it's still waiting for video preroll,
+                            // but video is already gone.
+                            sp<AMessage> msg = new AMessage(kWhatWakeupRendererFromPreroll, this);
+                            msg->post();
                         }
                         mVideoDecoderError = true;
                     }
@@ -1298,6 +1365,11 @@ void NuPlayer::onMessageReceived(const sp<AMessage> &msg) {
             } else if (what == Renderer::kWhatMediaRenderingStart) {
                 ALOGV("media rendering started");
                 notifyListener(MEDIA_STARTED, 0, 0);
+            } else if (!mPaused && what == Renderer::kWhatVideoPrerollComplete) {
+                // If NuPlayer is paused too, don't resume renderer. The pause may be called by
+                // client, wait for client to resume NuPlayer
+                ALOGI("NOTE: Video preroll complete.. resume renderer..");
+                mRenderer->resume();
             } else if (what == Renderer::kWhatAudioTearDown) {
                 int32_t reason;
                 CHECK(msg->findInt32("reason", &reason));
@@ -1338,6 +1410,8 @@ void NuPlayer::onMessageReceived(const sp<AMessage> &msg) {
                         FLUSH_CMD_SHUTDOWN /* audio */,
                         FLUSH_CMD_SHUTDOWN /* video */));
 
+            mDeferredActions.push_back(
+                    new SimpleAction(&NuPlayer::closeAudioSink));
             mDeferredActions.push_back(
                     new SimpleAction(&NuPlayer::performReset));
 
@@ -1459,6 +1533,16 @@ void NuPlayer::onMessageReceived(const sp<AMessage> &msg) {
             in.writeFloat(playbackRate);
 
             notifyListener(MEDIA_TIME_DISCONTINUITY, 0, 0, &in);
+            break;
+        }
+
+        case kWhatWakeupRendererFromPreroll:
+        {
+            // don't break pause if client requested renderer to pause too.
+            if (!mPaused && mRenderer != NULL && !mRenderer->isVideoPrerollCompleted()) {
+                ALOGI("NOTE: Video preroll timed out, resume renderer");
+                mRenderer->resume();
+            }
             break;
         }
 
@@ -1584,7 +1668,7 @@ void NuPlayer::onStart(int64_t startPositionUs, MediaPlayerSeekMode mode) {
     sp<AMessage> notify = new AMessage(kWhatRendererNotify, this);
     ++mRendererGeneration;
     notify->setInt32("generation", mRendererGeneration);
-    mRenderer = new Renderer(mAudioSink, mMediaClock, notify, flags);
+    mRenderer = AVNuFactory::get()->createRenderer(mAudioSink, mMediaClock, notify, flags);
     mRendererLooper = new ALooper;
     mRendererLooper->setName("NuPlayerRenderer");
     mRendererLooper->start(false, false, ANDROID_PRIORITY_AUDIO);
@@ -1858,9 +1942,13 @@ void NuPlayer::restartAudio(
         mRenderer->signalDisableOffloadAudio();
         mOffloadAudio = false;
     }
+
     if (needsToCreateAudioDecoder) {
-        instantiateDecoder(true /* audio */, &mAudioDecoder, !forceNonOffload);
+         mDeferredActions.push_back(
+            new InstantiateDecoderAction(true /* audio */, &mAudioDecoder, !forceNonOffload));
     }
+    processDeferredActions();
+
 }
 
 void NuPlayer::determineAudioModeChange(const sp<AMessage> &audioFormat) {
@@ -1910,9 +1998,10 @@ status_t NuPlayer::instantiateDecoder(
         return OK;
     }
 
-    sp<AMessage> format = mSource->getFormat(audio);
+    sp<AMessage> format = (mSource != NULL) ? mSource->getFormat(audio) : NULL;
 
     if (format == NULL) {
+        ALOGW("%s: getFormat called when source is gone or not set", __func__);
         return UNKNOWN_ERROR;
     } else {
         status_t err;
@@ -1966,12 +2055,13 @@ status_t NuPlayer::instantiateDecoder(
 
             const bool hasVideo = (mSource->getFormat(false /*audio */) != NULL);
             format->setInt32("has-video", hasVideo);
-            *decoder = new DecoderPassThrough(notify, mSource, mRenderer);
-            ALOGV("instantiateDecoder audio DecoderPassThrough  hasVideo: %d", hasVideo);
+            *decoder = AVNuFactory::get()->createPassThruDecoder(notify, mSource, mRenderer);
+            ALOGV("instantiateDecoder audio DecoderPassThrough hasVideo: %d", hasVideo);
         } else {
+            AVNuUtils::get()->setCodecOutputFormat(format);
             mSource->setOffloadAudio(false /* offload */);
 
-            *decoder = new Decoder(notify, mSource, mPID, mUID, mRenderer);
+            *decoder = AVNuFactory::get()->createDecoder(notify, mSource, mPID, mUID, mRenderer);
             ALOGV("instantiateDecoder audio Decoder");
         }
         mAudioDecoderError = false;
@@ -2021,6 +2111,7 @@ status_t NuPlayer::instantiateDecoder(
             }
         }
 
+        params->setFloat("playback-speed", mPlaybackSettings.mSpeed);
         if (params->countEntries() > 0) {
             (*decoder)->setParameters(params);
         }
@@ -2722,6 +2813,13 @@ void NuPlayer::onSourceNotify(const sp<AMessage> &msg) {
         case Source::kWhatDrmNoLicense:
         {
             notifyListener(MEDIA_ERROR, MEDIA_ERROR_UNKNOWN, ERROR_DRM_NO_LICENSE);
+            break;
+        }
+
+        case Source::kWhatRTCPByeReceived:
+        {
+            ALOGV("notify the client that Bye message is received");
+            notifyListener(MEDIA_INFO, 2000, 0);
             break;
         }
 

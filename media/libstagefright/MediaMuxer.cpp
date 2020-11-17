@@ -37,6 +37,7 @@
 #include <media/stagefright/MPEG4Writer.h>
 #include <media/stagefright/OggWriter.h>
 #include <media/stagefright/Utils.h>
+#include <stagefright/AVExtensions.h>
 
 namespace android {
 

@@ -33,6 +33,7 @@
 #include <sys/stat.h>
 #include <inttypes.h>
 
+#include "stagefright/AVExtensions.h"
 using namespace webm;
 
 namespace {

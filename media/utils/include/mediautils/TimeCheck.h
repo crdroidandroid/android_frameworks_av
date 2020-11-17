@@ -32,11 +32,11 @@ public:
 
     // The default timeout is chosen to be less than system server watchdog timeout
     static constexpr uint32_t kDefaultTimeOutMs = 5000;
-
-            TimeCheck(const char *tag, uint32_t timeoutMs = kDefaultTimeOutMs);
+            TimeCheck(const char *tag);
             ~TimeCheck();
     static  void setAudioHalPids(const std::vector<pid_t>& pids);
     static  std::vector<pid_t> getAudioHalPids();
+    static void setSystemReadyTimeoutMs(uint32_t timeoutMs);
 
 private:
 
@@ -67,7 +67,7 @@ private:
     static sp<TimeCheckThread> getTimeCheckThread();
     static void accessAudioHalPids(std::vector<pid_t>* pids, bool update);
 
-    const           nsecs_t mEndTimeNs;
+    nsecs_t mEndTimeNs;
 };
 
 }; // namespace android

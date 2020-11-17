@@ -36,6 +36,10 @@ cc_library_static {
         "android.hidl.allocator@1.0",
     ],
 
+    export_shared_lib_headers: [
+        "libcrypto",
+    ],
+
     header_libs: [
         "media_ndk_headers",
     ],

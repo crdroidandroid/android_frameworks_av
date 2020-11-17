@@ -6,10 +6,6 @@ cc_library_headers {
 
 cc_defaults {
     name: "libstagefright_foundation_defaults",
-    vendor_available: true,
-    vndk: {
-        enabled: true,
-    },
     double_loadable: true,
     include_dirs: [
         "frameworks/av/include",
@@ -28,7 +24,6 @@ cc_defaults {
         "media_ndk_headers",
         "media_plugin_headers",
     ],
-
     export_header_lib_headers: [
         "libstagefright_foundation_headers",
         "media_plugin_headers",
@@ -37,13 +32,6 @@ cc_defaults {
     export_shared_lib_headers: [
         "libbinder",
     ],
-
-    cflags: [
-        "-Wno-multichar",
-        "-Werror",
-        "-Wall",
-    ],
-
     shared_libs: [
         "libbinder",
         "libutils",
@@ -91,7 +79,38 @@ cc_defaults {
 
 cc_library {
     name: "libstagefright_foundation",
+    vendor_available: true,
+    vndk: {
+        enabled: true,
+    },
     defaults: ["libstagefright_foundation_defaults"],
+    target: {
+        vendor: {
+            cflags: ["-D__ANDROID_VNDK__"],
+        },
+    },
+
+    cflags: [
+        "-Wno-multichar",
+        "-Werror",
+        "-Wall",
+    ],
+}
+
+cc_library {
+    name: "libstagefright_foundation_ext",
+    vendor: true,
+    vndk: {
+        enabled: true,
+        extends: "libstagefright_foundation",
+    },
+    defaults: ["libstagefright_foundation_defaults"],
+    cflags: [
+        "-Wno-multichar",
+        "-Werror",
+        "-Wall",
+        "-D__ANDROID_VNDK_EXT__"
+    ],
 }
 
 cc_library_static {

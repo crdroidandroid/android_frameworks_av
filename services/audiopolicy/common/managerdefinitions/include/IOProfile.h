@@ -84,7 +84,9 @@ public:
                              audio_channel_mask_t *updatedChannelMask,
                              // FIXME parameter type
                              uint32_t flags,
-                             bool exactMatchRequiredForInputFlags = false) const;
+                             bool exactMatchRequiredForInputFlags = false,
+                             bool checkExactFormatMatch = false,
+                             bool checkExactchannelMask = false) const;
 
     void dump(String8 *dst) const;
     void log();

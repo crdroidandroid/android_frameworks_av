@@ -178,7 +178,8 @@ FrameDecoder::FrameDecoder(
         const AString &componentName,
         const sp<MetaData> &trackMeta,
         const sp<IMediaSource> &source)
-    : mComponentName(componentName),
+    : mIDRSent(false),
+      mComponentName(componentName),
       mTrackMeta(trackMeta),
       mSource(source),
       mDstFormat(OMX_COLOR_Format16bitRGB565),
@@ -306,6 +307,8 @@ status_t FrameDecoder::extractInternal() {
                     (void)mDecoder->queueInputBuffer(
                             index, 0, 0, 0, MediaCodec::BUFFER_FLAG_EOS);
                     err = OK;
+                    flags |= MediaCodec::BUFFER_FLAG_EOS;
+                    mHaveMoreInputs = true;
                 } else {
                     ALOGW("Input Error: err=%d", err);
                 }
@@ -449,7 +452,11 @@ sp<AMessage> VideoFrameDecoder::onGetFormatAndSeekOptions(
     }
 
     // TODO: Use Flexible color instead
-    videoFormat->setInt32("color-format", OMX_COLOR_FormatYUV420Planar);
+    if (dstFormat() == OMX_COLOR_Format16bitRGB565) {
+        videoFormat->setInt32("color-format", OMX_COLOR_Format16bitRGB565);
+    } else {
+        videoFormat->setInt32("color-format", OMX_COLOR_FormatYUV420Planar);
+    }
 
     // For the thumbnail extraction case, try to allocate single buffer in both
     // input and output ports, if seeking to a sync frame. NOTE: This request may
@@ -459,7 +466,9 @@ sp<AMessage> VideoFrameDecoder::onGetFormatAndSeekOptions(
     if (!isSeekingClosest) {
         videoFormat->setInt32("android._num-input-buffers", 1);
         videoFormat->setInt32("android._num-output-buffers", 1);
+        videoFormat->setInt32("thumbnail-mode", 1);
     }
+
     return videoFormat;
 }
 
@@ -474,11 +483,11 @@ status_t VideoFrameDecoder::onInputReceived(
         ALOGV("Seeking closest: targetTimeUs=%lld", (long long)mTargetTimeUs);
     }
 
-    if (mIsAvcOrHevc && !isSeekingClosest
-            && IsIDR(codecBuffer->data(), codecBuffer->size())) {
+    if ((mIsAvcOrHevc && !isSeekingClosest
+            && IsIDR(codecBuffer->data(), codecBuffer->size())) || (mIDRSent ==  true)) {
         // Only need to decode one IDR frame, unless we're seeking with CLOSEST
         // option, in which case we need to actually decode to targetTimeUs.
-        *flags |= MediaCodec::BUFFER_FLAG_EOS;
+        mIDRSent == false ? mIDRSent = true : *flags |= MediaCodec::BUFFER_FLAG_EOS;
     }
     return OK;
 }
@@ -501,11 +510,12 @@ status_t VideoFrameDecoder::onOutputReceived(
         return ERROR_MALFORMED;
     }
 
-    int32_t width, height, stride, srcFormat;
+    int32_t width, height, stride, srcFormat, slice_height;
     if (!outputFormat->findInt32("width", &width) ||
             !outputFormat->findInt32("height", &height) ||
             !outputFormat->findInt32("stride", &stride) ||
-            !outputFormat->findInt32("color-format", &srcFormat)) {
+            !outputFormat->findInt32("color-format", &srcFormat) ||
+            !outputFormat->findInt32("slice-height", &slice_height)) {
         ALOGE("format missing dimension or color: %s",
                 outputFormat->debugString().c_str());
         return ERROR_MALFORMED;
@@ -528,6 +538,22 @@ status_t VideoFrameDecoder::onOutputReceived(
     addFrame(frameMem);
     VideoFrame* frame = static_cast<VideoFrame*>(frameMem->pointer());
 
+    int cropWidth = crop_right - crop_left + 1;
+    int cropHeight = crop_bottom - crop_top + 1;
+    uint8_t *dst = frame->getFlattenedData();
+    uint8_t *src = videoFrameBuffer->data();
+
+    if (srcFormat == OMX_COLOR_Format16bitRGB565 &&
+        dstFormat() == OMX_COLOR_Format16bitRGB565) {
+        for (int h = 0; h < cropHeight; h++) {
+            memcpy(dst, src, cropWidth * 2);
+
+            dst = dst + cropWidth * 2;
+            src = src + stride * 2;
+        }
+        return OK;
+    }
+
     ColorConverter converter((OMX_COLOR_FORMATTYPE)srcFormat, dstFormat());
 
     uint32_t standard, range, transfer;
@@ -545,7 +571,7 @@ status_t VideoFrameDecoder::onOutputReceived(
     if (converter.isValid()) {
         converter.convert(
                 (const uint8_t *)videoFrameBuffer->data(),
-                width, height, stride,
+                width, slice_height, stride,
                 crop_left, crop_top, crop_right, crop_bottom,
                 frame->getFlattenedData(),
                 frame->mWidth, frame->mHeight, frame->mRowBytes,
@@ -645,6 +671,7 @@ sp<AMessage> ImageDecoder::onGetFormatAndSeekOptions(
     if ((mGridRows == 1) && (mGridCols == 1)) {
         videoFormat->setInt32("android._num-input-buffers", 1);
         videoFormat->setInt32("android._num-output-buffers", 1);
+        videoFormat->setInt32("thumbnail-mode", 1);
     }
     return videoFormat;
 }
@@ -695,10 +722,11 @@ status_t ImageDecoder::onOutputReceived(
         return ERROR_MALFORMED;
     }
 
-    int32_t width, height, stride;
+    int32_t width, height, stride, slice_height;
     CHECK(outputFormat->findInt32("width", &width));
     CHECK(outputFormat->findInt32("height", &height));
     CHECK(outputFormat->findInt32("stride", &stride));
+    CHECK(outputFormat->findInt32("slice-height", &slice_height));
 
     if (mFrame == NULL) {
         sp<IMemory> frameMem = allocVideoFrame(

@@ -84,6 +84,7 @@ protected:
     void addFrame(const sp<IMemory> &frame) {
         mFrames.push_back(frame);
     }
+    bool mIDRSent;
 
 private:
     AString mComponentName;

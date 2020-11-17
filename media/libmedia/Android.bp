@@ -309,6 +309,10 @@ cc_library {
         "libmedia_midiiowrapper",
     ],
 
+    whole_static_libs: [
+        "libavmediaextentions",
+    ],
+
     export_include_dirs: [
         "include",
     ],

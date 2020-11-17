@@ -23,6 +23,7 @@ cc_library_static {
         "libmedia_omx",
         "libui",
         "libutils",
+        "libmediaplayerservice",
 
         "libcrypto",
         "libmediametrics",

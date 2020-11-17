@@ -26,7 +26,9 @@ cc_defaults {
 
     include_dirs: [
         "frameworks/av/media/libstagefright",
+	"frameworks/av/media/libavextensions",
         "frameworks/native/include/media/openmax",
+	"frameworks/av/media/libmediaplayerservice",
     ],
 
     arch: {
@@ -59,7 +61,7 @@ cc_library_static {
 
 cc_library_static {
     name: "libstagefright_rtsp_player2",
-
+    cflags: ["-D__NO_AVEXTENSIONS__"],
     srcs: ["NetworkUtilsForAppProc.cpp"],
     defaults: ["libstagefright_rtsp_defaults"],
 }
