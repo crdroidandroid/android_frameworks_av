@@ -1378,7 +1378,9 @@ status_t HeicCompositeStream::initializeCodec(uint32_t width, uint32_t height,
     mOutputWidth = width;
     mOutputHeight = height;
     mAppSegmentMaxSize = calcAppSegmentMaxSize(cameraDevice->info());
-    mMaxHeicBufferSize = (ALIGN(mOutputWidth, 512) * ALIGN(mOutputHeight, 512)) * 3 / 2 + mAppSegmentMaxSize;
+    mMaxHeicBufferSize =
+        ALIGN(mOutputWidth, HeicEncoderInfoManager::kGridWidth) *
+        ALIGN(mOutputHeight, HeicEncoderInfoManager::kGridHeight) * 3 / 2 + mAppSegmentMaxSize;
 
     return OK;
 }
