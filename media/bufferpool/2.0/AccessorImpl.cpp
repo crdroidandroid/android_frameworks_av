@@ -322,7 +322,7 @@ std::atomic<std::uint32_t> Accessor::Impl::BufferPool::Invalidation::sInvSeqId(0
 
 Accessor::Impl::Impl::BufferPool::~BufferPool() {
     std::lock_guard<std::mutex> lock(mMutex);
-    ALOGD("Destruction - bufferpool2 %p "
+    ALOGV("Destruction - bufferpool2 %p "
           "cached: %zu/%zuM, %zu/%d%% in use; "
           "allocs: %zu, %d%% recycled; "
           "transfers: %zu, %d%% unfetched",
@@ -498,7 +498,7 @@ bool Accessor::Impl::BufferPool::handleTransferTo(const BufferStatusMessage &mes
     }
     if (mConnectionIds.find(message.targetConnectionId) == mConnectionIds.end()) {
         // N.B: it could be fake or receive connection already closed.
-        ALOGD("bufferpool2 %p receiver connection %lld is no longer valid",
+        ALOGV("bufferpool2 %p receiver connection %lld is no longer valid",
               this, (long long)message.targetConnectionId);
         return false;
     }
@@ -732,7 +732,7 @@ void Accessor::Impl::BufferPool::cleanUp(bool clearCache) {
         if (mTimestampUs > mLastLogUs + kLogDurationUs ||
                 mStats.buffersNotInUse() > kMaxUnusedBufferCount) {
             mLastLogUs = mTimestampUs;
-            ALOGD("bufferpool2 %p : %zu(%zu size) total buffers - "
+            ALOGV("bufferpool2 %p : %zu(%zu size) total buffers - "
                   "%zu(%zu size) used buffers - %zu/%zu (recycle/alloc) - "
                   "%zu/%zu (fetch/transfer)",
                   this, mStats.mBuffersCached, mStats.mSizeCached,
