@@ -43,6 +43,7 @@ cc_library_shared {
         "uses_oplus_camera_defaults",
         "uses_oppo_camera_defaults",
         "uses_nothing_camera_defaults",
+        "uses_miui_camera_defaults",
     ],
 
     // Camera service source
