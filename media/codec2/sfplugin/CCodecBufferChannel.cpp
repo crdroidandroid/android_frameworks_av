@@ -618,7 +618,7 @@ void CCodecBufferChannel::feedInputBufferIfAvailable() {
 }
 
 void CCodecBufferChannel::feedInputBufferIfAvailableInternal() {
-    if (mInputMetEos) {
+    if (mInputMetEos || mPipelineWatcher.lock()->pipelineFull()) {
         return;
     }
     {
@@ -631,9 +631,6 @@ void CCodecBufferChannel::feedInputBufferIfAvailableInternal() {
     }
     size_t numInputSlots = mInput.lock()->numSlots;
     for (size_t i = 0; i < numInputSlots; ++i) {
-        if (mPipelineWatcher.lock()->pipelineFull()) {
-            return;
-        }
         sp<MediaCodecBuffer> inBuffer;
         size_t index;
         {
