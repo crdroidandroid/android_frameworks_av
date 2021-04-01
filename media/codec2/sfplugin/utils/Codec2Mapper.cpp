@@ -91,6 +91,8 @@ ALookup<C2Config::profile_t, int32_t> sAvcProfiles = {
     { C2Config::PROFILE_AVC_HIGH_422_INTRA,         AVCProfileHigh422 },
     { C2Config::PROFILE_AVC_HIGH_444_INTRA,         AVCProfileHigh444 },
     { C2Config::PROFILE_AVC_CAVLC_444_INTRA,        AVCProfileHigh444 },
+    { C2Config::PROFILE_AVC_RESTRICTED_HIGH,        AVCProfileRestrictedHigh },
+    { C2Config::PROFILE_AVC_RESTRICTED_HIGH_2,      AVCProfileRestrictedHigh2 },
 };
 
 ALookup<C2Config::bitrate_mode_t, int32_t> sBitrateModes = {

@@ -30,6 +30,8 @@ constexpr int32_t AVCProfileHigh422  = 0x20;
 constexpr int32_t AVCProfileHigh444  = 0x40;
 constexpr int32_t AVCProfileConstrainedBaseline = 0x10000;
 constexpr int32_t AVCProfileConstrainedHigh     = 0x80000;
+constexpr int32_t AVCProfileRestrictedHigh      = 0x100000;
+constexpr int32_t AVCProfileRestrictedHigh2     = 0x200000;
 
 inline static const char *asString_AVCProfile(int32_t i, const char *def = "??") {
     switch (i) {
@@ -42,6 +44,8 @@ inline static const char *asString_AVCProfile(int32_t i, const char *def = "??")
         case AVCProfileHigh444:             return "High444";
         case AVCProfileConstrainedBaseline: return "ConstrainedBaseline";
         case AVCProfileConstrainedHigh:     return "ConstrainedHigh";
+        case AVCProfileRestrictedHigh:      return "RestrictedHigh";
+        case AVCProfileRestrictedHigh2:     return "RestrictedHigh2";
         default:                            return def;
     }
 }

@@ -494,6 +494,8 @@ enum C2Config::profile_t : uint32_t {
     PROFILE_AVC_MULTIVIEW_DEPTH_HIGH = _C2_PL_AVC_BASE + 0x300,  ///< AVC (H.264) Multiview Depth High
     PROFILE_AVC_MFC_DEPTH_HIGH,                 ///< AVC (H.264) MFC Depth High
     PROFILE_AVC_ENHANCED_MULTIVIEW_DEPTH_HIGH = _C2_PL_AVC_BASE + 0x400,  ///< AVC (H.264) Enhanced Multiview Depth High
+    PROFILE_AVC_RESTRICTED_HIGH,                ///< AVC (H.264) Restricted High
+    PROFILE_AVC_RESTRICTED_HIGH_2,              ///< AVC (H.264) Restricted High 2
 
     // HEVC profiles
     PROFILE_HEVC_MAIN = _C2_PL_HEVC_BASE,       ///< HEVC (H.265) Main
