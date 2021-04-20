@@ -1671,7 +1671,7 @@ status_t convertMessageToMetaData(const sp<AMessage> &msg, sp<MetaData> &meta) {
     if (msg->findString("mime", &mime)) {
         meta->setCString(kKeyMIMEType, mime.c_str());
     } else {
-        ALOGI("did not find mime type");
+        ALOGV("did not find mime type");
         return BAD_VALUE;
     }
 
@@ -1721,7 +1721,7 @@ status_t convertMessageToMetaData(const sp<AMessage> &msg, sp<MetaData> &meta) {
             meta->setInt32(kKeyWidth, width);
             meta->setInt32(kKeyHeight, height);
         } else {
-            ALOGI("did not find width and/or height");
+            ALOGV("did not find width and/or height");
             return BAD_VALUE;
         }
 
@@ -1810,7 +1810,7 @@ status_t convertMessageToMetaData(const sp<AMessage> &msg, sp<MetaData> &meta) {
         int32_t numChannels, sampleRate;
         if (!msg->findInt32("channel-count", &numChannels) ||
                 !msg->findInt32("sample-rate", &sampleRate)) {
-            ALOGI("did not find channel-count and/or sample-rate");
+            ALOGV("did not find channel-count and/or sample-rate");
             return BAD_VALUE;
         }
         meta->setInt32(kKeyChannelCount, numChannels);
