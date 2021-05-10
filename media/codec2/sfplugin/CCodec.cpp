@@ -1155,13 +1155,11 @@ void CCodec::createInputSurface() {
     status_t err;
     sp<IGraphicBufferProducer> bufferProducer;
 
-    sp<AMessage> inputFormat;
     sp<AMessage> outputFormat;
     uint64_t usage = 0;
     {
         Mutexed<std::unique_ptr<Config>>::Locked configLocked(mConfig);
         const std::unique_ptr<Config> &config = *configLocked;
-        inputFormat = config->mInputFormat;
         outputFormat = config->mOutputFormat;
         usage = config->mISConfig ? config->mISConfig->mUsage : 0;
     }
@@ -1197,6 +1195,14 @@ void CCodec::createInputSurface() {
         return;
     }
 
+    // Formats can change after setupInputSurface
+    sp<AMessage> inputFormat;
+    {
+        Mutexed<std::unique_ptr<Config>>::Locked configLocked(mConfig);
+        const std::unique_ptr<Config> &config = *configLocked;
+        inputFormat = config->mInputFormat;
+        outputFormat = config->mOutputFormat;
+    }
     mCallback->onInputSurfaceCreated(
             inputFormat,
             outputFormat,
@@ -1246,13 +1252,11 @@ void CCodec::initiateSetInputSurface(const sp<PersistentSurface> &surface) {
 }
 
 void CCodec::setInputSurface(const sp<PersistentSurface> &surface) {
-    sp<AMessage> inputFormat;
     sp<AMessage> outputFormat;
     uint64_t usage = 0;
     {
         Mutexed<std::unique_ptr<Config>>::Locked configLocked(mConfig);
         const std::unique_ptr<Config> &config = *configLocked;
-        inputFormat = config->mInputFormat;
         outputFormat = config->mOutputFormat;
         usage = config->mISConfig ? config->mISConfig->mUsage : 0;
     }
@@ -1283,6 +1287,14 @@ void CCodec::setInputSurface(const sp<PersistentSurface> &surface) {
         ALOGE("Failed to set input surface: Corrupted surface.");
         mCallback->onInputSurfaceDeclined(UNKNOWN_ERROR);
         return;
+    }
+    // Formats can change after setupInputSurface
+    sp<AMessage> inputFormat;
+    {
+        Mutexed<std::unique_ptr<Config>>::Locked configLocked(mConfig);
+        const std::unique_ptr<Config> &config = *configLocked;
+        inputFormat = config->mInputFormat;
+        outputFormat = config->mOutputFormat;
     }
     mCallback->onInputSurfaceAccepted(inputFormat, outputFormat);
 }
