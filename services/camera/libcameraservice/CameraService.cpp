@@ -24,7 +24,7 @@
 #include <cstring>
 #include <ctime>
 #include <string>
-#ifdef TARGET_NEEDS_CLIENT_INFO
+#ifdef CAMERA_NEEDS_CLIENT_INFO
 #include <iostream>
 #include <fstream>
 #endif
@@ -2992,7 +2992,7 @@ status_t CameraService::BasicClient::startCameraOps() {
     // Notify listeners of camera open/close status
     sCameraService->updateOpenCloseStatus(mCameraIdStr, true/*open*/, mClientPackageName);
 
-#ifdef TARGET_NEEDS_CLIENT_INFO
+#ifdef CAMERA_NEEDS_CLIENT_INFO
     std::ofstream cpf("/data/misc/lineage/client_package_name");
     std::string cpn = String8(mClientPackageName).string();
     cpf << cpn;
