@@ -30,12 +30,13 @@ apex_defaults {
                 "libmp4extractor",
                 "libmpeg2extractor",
                 "liboggextractor",
-                "libwavextractor",
-                // JNI
-                "libmediaparser-jni"
+                "libwavextractor"
             ],
         },
     },
+    // JNI
+    native_shared_libs: ["libmediaparser-jni"],
+    compile_multilib: "both",
     prebuilts: [
         "mediaextractor.policy",
         "code_coverage.policy",
