@@ -86,7 +86,7 @@ int64_t euclidDistSquare(int32_t x0, int32_t y0, int32_t x1, int32_t y1);
 // a width <= ROUNDING_WIDTH_CAP
 bool roundBufferDimensionNearest(int32_t width, int32_t height, int32_t format,
         android_dataspace dataSpace, const CameraMetadata& info, bool maxResolution,
-        /*out*/int32_t* outWidth, /*out*/int32_t* outHeight);
+        /*out*/int32_t* outWidth, /*out*/int32_t* outHeight, bool isPriviledgedClient);
 
 // check if format is not custom format
 bool isPublicFormat(int32_t format);
