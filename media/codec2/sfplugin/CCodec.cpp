@@ -213,9 +213,8 @@ public:
                 (OMX_INDEXTYPE)OMX_IndexParamConsumerUsageBits,
                 &usage, sizeof(usage));
 
-        mSource->configure(
-                mOmxNode, static_cast<hardware::graphics::common::V1_0::Dataspace>(mDataSpace));
-        return OK;
+        return GetStatus(mSource->configure(
+                mOmxNode, static_cast<hardware::graphics::common::V1_0::Dataspace>(mDataSpace)));
     }
 
     void disconnect() override {
