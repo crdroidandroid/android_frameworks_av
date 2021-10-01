@@ -551,7 +551,8 @@ status_t MediaCodecSource::initEncoder() {
                         mOutputFormat,
                         NULL /* nativeWindow */,
                         NULL /* crypto */,
-                        MediaCodec::CONFIGURE_FLAG_ENCODE);
+                        MediaCodec::CONFIGURE_FLAG_ENCODE |
+                        (mIsVideo ? MediaCodec::CONFIGURE_FLAG_USE_BLOCK_MODEL : 0));
 
             if (err == OK) {
                 break;
