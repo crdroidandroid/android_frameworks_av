@@ -245,6 +245,8 @@ public:
             std::vector<media::AudioDevice>* _aidl_return) override;
     binder::Status registerSoundTriggerCaptureStateListener(
             const sp<media::ICaptureStateListener>& listener, bool* _aidl_return) override;
+    binder::Status listAudioSessions(media::AudioStreamType stream,
+            std::vector<media::AudioSessionInfo> *sessions) override;
 
     binder::Status getSpatializer(const sp<media::INativeSpatializerCallback>& callback,
             media::GetSpatializerResponse* _aidl_return) override;
