@@ -273,9 +273,6 @@ void NuPlayer::HTTPLiveSource::pollForRawData(
             msg->post(delayUs > 0LL ? delayUs : 0LL);
             return;
         } else if (fetchType == LiveSession::STREAMTYPE_METADATA) {
-            if (delayUs < -1000000LL) { // 1 second
-                continue;
-            }
             notify->post();
             // push all currently available metadata buffers in each invocation of pollForRawData
             // continue;
