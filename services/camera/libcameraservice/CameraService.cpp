@@ -81,6 +81,10 @@
 #include "utils/TagMonitor.h"
 #include "utils/CameraThreadState.h"
 
+#ifdef CAMERA_NEEDS_CLIENT_INFO_LIB
+#include <vendor/oneplus/hardware/camera/1.0/IOnePlusCameraProvider.h>
+#endif
+
 namespace {
     const char* kPermissionServiceName = "permission";
 }; // namespace anonymous
@@ -98,6 +102,9 @@ using hardware::camera::common::V1_0::CameraDeviceStatus;
 using hardware::camera::common::V1_0::TorchModeStatus;
 using hardware::camera2::utils::CameraIdAndSessionConfiguration;
 using hardware::camera2::utils::ConcurrentCameraIdCombination;
+#ifdef CAMERA_NEEDS_CLIENT_INFO_LIB
+using ::vendor::oneplus::hardware::camera::V1_0::IOnePlusCameraProvider;
+#endif
 
 // ----------------------------------------------------------------------------
 // Logging support -- this is for debugging only
@@ -132,6 +139,10 @@ static const String16
         sCameraSendSystemEventsPermission("android.permission.CAMERA_SEND_SYSTEM_EVENTS");
 static const String16 sCameraOpenCloseListenerPermission(
         "android.permission.CAMERA_OPEN_CLOSE_LISTENER");
+
+#ifdef CAMERA_NEEDS_CLIENT_INFO_LIB
+static const sp<IOnePlusCameraProvider> gVendorCameraProviderService = IOnePlusCameraProvider::getService();
+#endif
 
 // Matches with PERCEPTIBLE_APP_ADJ in ProcessList.java
 static constexpr int32_t kVendorClientScore = 200;
@@ -2996,6 +3007,9 @@ status_t CameraService::BasicClient::startCameraOps() {
     std::ofstream cpf("/data/misc/lineage/client_package_name");
     std::string cpn = String8(mClientPackageName).string();
     cpf << cpn;
+#endif
+#ifdef CAMERA_NEEDS_CLIENT_INFO_LIB
+    gVendorCameraProviderService->setPackageName(String8(mClientPackageName).string());
 #endif
     return OK;
 }
