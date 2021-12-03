@@ -3264,6 +3264,8 @@ status_t AudioFlinger::DeviceEffectProxy::checkPort(const PatchPanel::Patch& pat
         } else {
             mHalEffect->setDevices({mDevice});
         }
+        mHalEffect->configure();
+
         *handle = new EffectHandle(mHalEffect, nullptr, nullptr, 0 /*priority*/,
                                    mNotifyFramesProcessed);
         status = (*handle)->initCheck();
@@ -3312,8 +3314,14 @@ status_t AudioFlinger::DeviceEffectProxy::checkPort(const PatchPanel::Patch& pat
 }
 
 void AudioFlinger::DeviceEffectProxy::onReleasePatch(audio_patch_handle_t patchHandle) {
-    Mutex::Autolock _l(mProxyLock);
-    mEffectHandles.erase(patchHandle);
+    sp<EffectHandle> effect;
+    {
+        Mutex::Autolock _l(mProxyLock);
+        if (mEffectHandles.find(patchHandle) != mEffectHandles.end()) {
+            effect = mEffectHandles.at(patchHandle);
+            mEffectHandles.erase(patchHandle);
+        }
+    }
 }
 
 
@@ -3321,6 +3329,7 @@ size_t AudioFlinger::DeviceEffectProxy::removeEffect(const sp<EffectModule>& eff
 {
     Mutex::Autolock _l(mProxyLock);
     if (effect == mHalEffect) {
+        mHalEffect->release_l();
         mHalEffect.clear();
         mDevicePort.id = AUDIO_PORT_HANDLE_NONE;
     }
@@ -3468,7 +3477,7 @@ status_t AudioFlinger::DeviceEffectProxy::ProxyCallback::removeEffectFromHal(
     if (proxy == nullptr) {
         return NO_INIT;
     }
-    return proxy->addEffectToHal(effect);
+    return proxy->removeEffectFromHal(effect);
 }
 
 bool AudioFlinger::DeviceEffectProxy::ProxyCallback::isOutput() const {
@@ -3518,6 +3527,24 @@ uint32_t AudioFlinger::DeviceEffectProxy::ProxyCallback::outChannelCount() const
         return 2;
     }
     return proxy->channelCount();
+}
+
+void AudioFlinger::DeviceEffectProxy::ProxyCallback::onEffectEnable(
+        const sp<EffectBase>& effectBase) {
+    sp<EffectModule> effect = effectBase->asEffectModule();
+    if (effect == nullptr) {
+        return;
+    }
+    effect->start();
+}
+
+void AudioFlinger::DeviceEffectProxy::ProxyCallback::onEffectDisable(
+        const sp<EffectBase>& effectBase) {
+    sp<EffectModule> effect = effectBase->asEffectModule();
+    if (effect == nullptr) {
+        return;
+    }
+    effect->stop();
 }
 
 } // namespace android
