@@ -2489,6 +2489,9 @@ void MediaPlayerService::AudioOutput::close()
     ALOGV("close");
     sp<AudioTrack> track;
     {
+        if (mTrack != 0) {
+            mTrack->stopAndJoinCallbacks();
+        }
         Mutex::Autolock lock(mLock);
         track = mTrack;
         close_l(); // clears mTrack
