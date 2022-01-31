@@ -141,6 +141,7 @@ Status AudioPolicyService::getDeviceConnectionState(const media::AudioDevice& de
                         AUDIO_POLICY_DEVICE_STATE_UNAVAILABLE));
         return Status::ok();
     }
+    Mutex::Autolock _l(mLock);
     AutoCallerClear acc;
     *_aidl_return = VALUE_OR_RETURN_BINDER_STATUS(
             legacy2aidl_audio_policy_dev_state_t_AudioPolicyDeviceState(
