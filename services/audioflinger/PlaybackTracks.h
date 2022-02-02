@@ -145,9 +145,16 @@ public:
     sp<media::VolumeShaper::State> getVolumeShaperState(int id);
     sp<media::VolumeHandler>   getVolumeHandler() { return mVolumeHandler; }
     /** Set the computed normalized final volume of the track.
-     * !masterMute * masterVolume * streamVolume * averageLRVolume */
+     * !masterMute * !appMuted * masterVolume * streamVolume * averageLRVolume * appVolume */
     void                setFinalVolume(float volume);
     float               getFinalVolume() const { return mFinalVolume; }
+
+    void                setAppVolume(float volume);
+    float               getAppVolume() const { return mAppVolume; }
+    void                setAppMute(bool val);
+    bool                isAppMuted() { return mAppMuted; }
+
+    String8             getPackageName() const { return mPackageName; }
 
     using SourceMetadatas = std::vector<playback_track_metadata_v7_t>;
     using MetadataInserter = std::back_insert_iterator<SourceMetadatas>;
@@ -317,6 +324,8 @@ private:
         for (auto& tp : mTeePatches) { f(tp.patchTrack); }
     };
 
+    String8             mPackageName;
+
     size_t              mPresentationCompleteFrames = 0; // (Used for Mixed tracks)
                                     // The number of frames written to the
                                     // audio HAL when this track is considered fully rendered.
@@ -337,7 +346,9 @@ private:
     volatile float      mCachedVolume;  // combined master volume and stream type volume;
                                         // 'volatile' means accessed without lock or
                                         // barrier, but is read/written atomically
-    float               mFinalVolume; // combine master volume, stream type volume and track volume
+    float               mFinalVolume; // combine master volume, stream type volume, track volume and relative volume
+    float               mAppVolume;  // volume control for separate processes
+    bool                mAppMuted;
     sp<AudioTrackServerProxy>  mAudioTrackServerProxy;
     bool                mResumeToStopping; // track was paused in stopping state.
     bool                mFlushHwPending; // track requests for thread flush
