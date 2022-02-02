@@ -25,6 +25,7 @@
 #include <utils/Errors.h>
 #include <binder/IInterface.h>
 #include <media/AidlConversion.h>
+#include <media/AppVolume.h>
 #include <media/AudioClient.h>
 #include <media/AudioCommonTypes.h>
 #include <media/DeviceDescriptorBase.h>
@@ -344,6 +345,10 @@ public:
 
     virtual status_t updateSecondaryOutputs(
             const TrackSecondaryOutputsMap& trackSecondaryOutputs) = 0;
+
+    virtual status_t setAppVolume(const String8& packageName, const float value) = 0;
+    virtual status_t setAppMute(const String8& packageName, const bool value) = 0;
+    virtual status_t listAppVolumes(std::vector<media::AppVolume> *vols) = 0;
 };
 
 /**
@@ -439,6 +444,10 @@ public:
     status_t updateSecondaryOutputs(
             const TrackSecondaryOutputsMap& trackSecondaryOutputs) override;
 
+    status_t setAppVolume(const String8& packageName, const float value) override;
+    status_t setAppMute(const String8& packageName, const bool value) override;
+    status_t listAppVolumes(std::vector<media::AppVolume> *vols) override;
+
 private:
     const sp<media::IAudioFlingerService> mDelegate;
 };
@@ -522,6 +531,9 @@ public:
             SET_AUDIO_HAL_PIDS = media::BnAudioFlingerService::TRANSACTION_setAudioHalPids,
             SET_VIBRATOR_INFOS = media::BnAudioFlingerService::TRANSACTION_setVibratorInfos,
             UPDATE_SECONDARY_OUTPUTS = media::BnAudioFlingerService::TRANSACTION_updateSecondaryOutputs,
+            SET_APP_VOLUME = media::BnAudioFlingerService::TRANSACTION_setAppVolume,
+            SET_APP_MUTE = media::BnAudioFlingerService::TRANSACTION_setAppMute,
+            LIST_APP_VOLUMES = media::BnAudioFlingerService::TRANSACTION_listAppVolumes,
         };
 
         /**
@@ -630,6 +642,10 @@ public:
     Status setVibratorInfos(const std::vector<media::AudioVibratorInfo>& vibratorInfos) override;
     Status updateSecondaryOutputs(
             const std::vector<media::TrackSecondaryOutputInfo>& trackSecondaryOutputInfos) override;
+
+    Status setAppVolume(const std::string& packageName, const float value) override;
+    Status setAppMute(const std::string& packageName, const bool value) override;
+    Status listAppVolumes(std::vector<media::AppVolumeData> *vols) override;
 
 private:
     const sp<AudioFlingerServerAdapter::Delegate> mDelegate;
