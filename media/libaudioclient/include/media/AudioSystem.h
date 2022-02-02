@@ -26,6 +26,7 @@
 #include <android/media/ISpatializer.h>
 #include <android/content/AttributionSourceState.h>
 #include <media/AidlConversionUtil.h>
+#include <media/AppVolume.h>
 #include <media/AudioDeviceTypeAddr.h>
 #include <media/AudioPolicy.h>
 #include <media/AudioProductStrategy.h>
@@ -611,6 +612,10 @@ public:
     static audio_port_handle_t getDeviceIdForIo(audio_io_handle_t audioIo);
 
     static status_t setVibratorInfos(const std::vector<media::AudioVibratorInfo>& vibratorInfos);
+
+    static status_t setAppVolume(const String8& packageName, const float value);
+    static status_t setAppMute(const String8& packageName, const bool value);
+    static status_t listAppVolumes(std::vector<media::AppVolume> *vols);
 
 private:
 

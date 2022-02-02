@@ -24,6 +24,7 @@
 #include <math.h>
 #include <fcntl.h>
 #include <memory>
+#include <set>
 #include <sstream>
 #include <string>
 #include <linux/futex.h>
@@ -2562,6 +2563,43 @@ ssize_t AudioFlinger::PlaybackThread::Tracks<T>::remove(const sp<T> &track)
         }
     }
     return index;
+}
+
+void AudioFlinger::PlaybackThread::listAppVolumes(std::set<media::AppVolume> &container)
+{
+    Mutex::Autolock _l(mLock);
+    for (sp<Track> track : mTracks) {
+        if (!track->getPackageName().isEmpty()) {
+            media::AppVolume av;
+            av.packageName = track->getPackageName();
+            av.muted = track->isAppMuted();
+            av.volume = track->getAppVolume();
+            av.active = mActiveTracks.indexOf(track) >= 0;
+            container.insert(av);
+        }
+    }
+}
+
+status_t AudioFlinger::PlaybackThread::setAppVolume(const String8& packageName, const float value)
+{
+    Mutex::Autolock _l(mLock);
+    for (sp<Track> track : mTracks) {
+        if (packageName == track->getPackageName()) {
+            track->setAppVolume(value);
+        }
+    }
+    return NO_ERROR;
+}
+
+status_t AudioFlinger::PlaybackThread::setAppMute(const String8& packageName, const bool value)
+{
+    Mutex::Autolock _l(mLock);
+    for (sp<Track> track : mTracks) {
+        if (packageName == track->getPackageName()) {
+            track->setAppMute(value);
+        }
+    }
+    return NO_ERROR;
 }
 
 uint32_t AudioFlinger::PlaybackThread::correctLatency_l(uint32_t latency) const
@@ -5332,10 +5370,12 @@ AudioFlinger::PlaybackThread::mixer_state AudioFlinger::MixerThread::prepareTrac
                 }
                 sp<AudioTrackServerProxy> proxy = track->mAudioTrackServerProxy;
                 float volume;
-                if (track->isPlaybackRestricted() || mStreamTypes[track->streamType()].mute) {
+                if (track->isPlaybackRestricted() ||
+                        mStreamTypes[track->streamType()].mute || track->isAppMuted()) {
                     volume = 0.f;
                 } else {
-                    volume = masterVolume * mStreamTypes[track->streamType()].volume;
+                    volume = masterVolume * mStreamTypes[track->streamType()].volume
+                                          * track->getAppVolume();
                 }
 
                 handleVoipVolume_l(&volume);
@@ -5492,13 +5532,15 @@ AudioFlinger::PlaybackThread::mixer_state AudioFlinger::MixerThread::prepareTrac
             uint32_t vl, vr;       // in U8.24 integer format
             float vlf, vrf, vaf;   // in [0.0, 1.0] float format
             // read original volumes with volume control
-            float v = masterVolume * mStreamTypes[track->streamType()].volume;
+            float v = masterVolume * mStreamTypes[track->streamType()].volume
+                                   * track->getAppVolume();
             // Always fetch volumeshaper volume to ensure state is updated.
             const sp<AudioTrackServerProxy> proxy = track->mAudioTrackServerProxy;
             const float vh = track->getVolumeHandler()->getVolume(
                     track->mAudioTrackServerProxy->framesReleased()).first;
 
-            if (mStreamTypes[track->streamType()].mute || track->isPlaybackRestricted()) {
+            if (mStreamTypes[track->streamType()].mute
+                    || track->isPlaybackRestricted() || track->isAppMuted()) {
                 v = 0;
             }
 
@@ -6081,11 +6123,13 @@ void AudioFlinger::DirectOutputThread::processVolume_l(Track *track, bool lastTr
             proxy->framesReleased());
     mVolumeShaperActive = shaperActive;
 
-    if (mMasterMute || mStreamTypes[track->streamType()].mute || track->isPlaybackRestricted()) {
+    if (mMasterMute || mStreamTypes[track->streamType()].mute
+            || track->isPlaybackRestricted() || track->isAppMuted()) {
         left = right = 0;
     } else {
         float typeVolume = mStreamTypes[track->streamType()].volume;
-        const float v = mMasterVolume * typeVolume * shaperVolume;
+        float appVolume = track->getAppVolume();
+        const float v = mMasterVolume * typeVolume * shaperVolume * appVolume;
 
         gain_minifloat_packed_t vlr = proxy->getVolumeLR();
         left = float_from_gain(gain_minifloat_unpack_left(vlr));
