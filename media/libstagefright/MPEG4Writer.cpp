@@ -865,6 +865,12 @@ status_t MPEG4Writer::start(MetaData *param) {
      */
     int32_t fileSizeBits = fpathconf(mFd, _PC_FILESIZEBITS);
     ALOGD("fpathconf _PC_FILESIZEBITS:%" PRId32, fileSizeBits);
+
+    if (fileSizeBits < 0) {
+        ALOGE("fpathconf(%d) failed: %d, %s", mFd, fileSizeBits, strerror(errno));
+        return UNKNOWN_ERROR;
+    }
+
     fileSizeBits = std::min(fileSizeBits, 52 /* cap it below 4 peta bytes */);
     int64_t maxFileSizeBytes = ((int64_t)1 << fileSizeBits) - 1;
     if (mMaxFileSizeLimitBytes > maxFileSizeBytes) {
