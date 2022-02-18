@@ -19,6 +19,10 @@ cc_library {
 
     static_libs: ["libhevcdec"],
 
+    // Fails to compile when global ThinLTO is enabled for this library
+    lto: {
+        never: true,
+    },
 }
 
 cc_library {
@@ -33,4 +37,8 @@ cc_library {
 
     static_libs: ["libhevcenc"],
 
+    // Fails to compile when global ThinLTO is enabled for this library
+    lto: {
+        never: true,
+    },
 }

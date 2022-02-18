@@ -23,6 +23,11 @@ cc_library {
         "external/libavc/decoder",
         "external/libavc/common",
     ],
+
+    // Fails to compile when global ThinLTO is enabled for this library
+    lto: {
+        never: true,
+    },
 }
 
 cc_library {
@@ -45,4 +50,9 @@ cc_library {
     cflags: [
         "-Wno-unused-variable",
     ],
+
+    // Fails to compile when global ThinLTO is enabled for this library
+    lto: {
+        never: true,
+    },
 }

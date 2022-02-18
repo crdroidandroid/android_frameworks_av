@@ -31,4 +31,9 @@ cc_library_shared {
     },
 
     ldflags: ["-Wl,-Bsymbolic"],
+
+    // Fails to compile when global ThinLTO is enabled for this library
+    lto: {
+        never: true,
+    },
 }
