@@ -28,6 +28,7 @@
 class C2Fence::Impl {
 public:
     enum type_t : uint32_t {
+        ANDROID_FENCE,
         INVALID_FENCE,
         NULL_FENCE,
         SURFACE_FENCE,
@@ -103,6 +104,38 @@ bool C2Fence::isHW() const {
         return mImpl->isHW();
     }
     return false;
+}
+
+C2Handle *C2Fence::handle() const {
+    native_handle_t* h = nullptr;
+
+    Impl::type_t type = mImpl ? mImpl->type() : Impl::NULL_FENCE;
+    switch (type) {
+        case Impl::NULL_FENCE:
+            h = native_handle_create(0, 1);
+            if (!h) {
+                ALOGE("Failed to allocate native handle for Null fence");
+                return nullptr;
+            }
+            h->data[0] = type;
+            break;
+        case Impl::SURFACE_FENCE:
+            ALOGE("Cannot create native handle from surface fence");
+            break;
+        case Impl::ANDROID_FENCE:
+            h = native_handle_create(1, 1);
+            if (!h) {
+                ALOGE("Failed to allocate native handle for Android fence");
+                return nullptr;
+            }
+            h->data[0] = mImpl->fd();
+            h->data[1] = type;
+            break;
+        default:
+            ALOGE("Unsupported fence type");
+            break;
+    }
+    return reinterpret_cast<C2Handle*>(h);
 }
 
 /**
