@@ -586,6 +586,10 @@ status_t MediaCodecSource::initEncoder() {
         if (err != OK) {
             return err;
         }
+        if (mEncoder == NULL) {
+            ALOGE("initEncoder : mEncoder is null");
+            return BAD_VALUE;
+        }
     }
 
     sp<AMessage> inputFormat;
