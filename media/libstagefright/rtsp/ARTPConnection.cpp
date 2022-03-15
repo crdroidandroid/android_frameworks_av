@@ -513,6 +513,7 @@ void ARTPConnection::onPollStreams() {
                     if (n != (ssize_t)buffer->size()) {
                         ALOGW("failed to send RTCP TMMBR (%s).",
                                 n >= 0 ? "connection gone" : strerror(errno));
+                        ++it;//prevent deathloop
                         continue;
                     }
                 }
@@ -528,18 +529,16 @@ void ARTPConnection::onPollStreams() {
             || mLastReceiverReportTimeUs + 5000000LL <= nowUs) {
         sp<ABuffer> buffer = new ABuffer(kMaxUDPSize);
         List<StreamInfo>::iterator it = mStreams.begin();
-        while (it != mStreams.end()) {
+        for( ; it != mStreams.end(); ++it) {
             StreamInfo *s = &*it;
 
             if (s->mIsInjected) {
-                ++it;
                 continue;
             }
 
             if (s->mNumRTCPPacketsReceived == 0) {
                 // We have never received any RTCP packets on this stream,
                 // we don't even know where to send a report.
-                ++it;
                 continue;
             }
 
@@ -570,7 +569,6 @@ void ARTPConnection::onPollStreams() {
                 mLastReceiverReportTimeUs = nowUs;
             }
 
-            ++it;
         }
     }
 
@@ -635,7 +633,7 @@ status_t ARTPConnection::receive(StreamInfo *s, bool receiveRTP) {
 
     buffer->setRange(0, nbytes);
 
-    // ALOGI("received %d bytes.", buffer->size());
+    // ALOGI("received %zu bytes.", buffer->size());
 
     status_t err;
     if (receiveRTP) {
