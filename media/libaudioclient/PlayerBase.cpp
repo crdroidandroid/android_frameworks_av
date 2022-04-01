@@ -165,8 +165,8 @@ binder::Status PlayerBase::stop() {
 
 binder::Status PlayerBase::setVolume(float vol) {
     ALOGD("PlayerBase::setVolume() from IPlayer");
+    Mutex::Autolock _l(mSettingsLock);
     {
-        Mutex::Autolock _l(mSettingsLock);
         mVolumeMultiplierL = vol;
         mVolumeMultiplierR = vol;
     }
@@ -179,8 +179,8 @@ binder::Status PlayerBase::setVolume(float vol) {
 
 binder::Status PlayerBase::setPan(float pan) {
     ALOGD("PlayerBase::setPan() from IPlayer");
+    Mutex::Autolock _l(mSettingsLock);
     {
-        Mutex::Autolock _l(mSettingsLock);
         pan = min(max(-1.0f, pan), 1.0f);
         if (pan >= 0.0f) {
             mPanMultiplierL = 1.0f - pan;
