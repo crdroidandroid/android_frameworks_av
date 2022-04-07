@@ -933,6 +933,11 @@ status_t CCodecBufferChannel::renderOutputBuffer(
                 hdr.validTypes |= HdrMetadata::CTA861_3;
                 hdr.cta8613 = cta861_meta;
             }
+
+            // does not have valid info
+            if (!(hdr.validTypes & (HdrMetadata::SMPTE2086 | HdrMetadata::CTA861_3))) {
+                hdrStaticInfo.reset();
+            }
         }
         if (hdr10PlusInfo) {
             hdr.validTypes |= HdrMetadata::HDR10PLUS;
