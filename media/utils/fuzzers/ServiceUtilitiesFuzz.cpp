@@ -25,23 +25,28 @@
 
 static constexpr int kMaxOperations = 50;
 static constexpr int kMaxStringLen = 256;
+static constexpr int kRightSpaceLimit = 1000;
+static constexpr int kLeftSpaceLimit = -1000;
 
 using android::content::AttributionSourceState;
 
 const std::vector<std::function<void(FuzzedDataProvider*, android::MediaPackageManager)>>
-    operations = {
-        [](FuzzedDataProvider* data_provider, android::MediaPackageManager pm) -> void {
-            uid_t uid = data_provider->ConsumeIntegral<uid_t>();
-            pm.allowPlaybackCapture(uid);
-        },
-        [](FuzzedDataProvider* data_provider, android::MediaPackageManager pm) -> void {
-            int spaces = data_provider->ConsumeIntegral<int>();
+        operations = {
+                [](FuzzedDataProvider* data_provider, android::MediaPackageManager pm) -> void {
+                    uid_t uid = data_provider->ConsumeIntegral<uid_t>();
+                    pm.allowPlaybackCapture(uid);
+                },
+                [](FuzzedDataProvider* data_provider, android::MediaPackageManager pm) -> void {
+                    /* Negative value of 'spaces' will print, left-justified spaces and positive
+                     value will print right-justified spaces, in the specified path. */
+                    int spaces = data_provider->ConsumeIntegralInRange<int>(kLeftSpaceLimit,
+                                                                            kRightSpaceLimit);
 
-            // Dump everything into /dev/null
-            int fd = open("/dev/null", O_WRONLY);
-            pm.dump(fd, spaces);
-            close(fd);
-        },
+                    // Dump everything into /dev/null
+                    int fd = open("/dev/null", O_WRONLY);
+                    pm.dump(fd, spaces);
+                    close(fd);
+                },
 };
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
