@@ -1,6 +1,5 @@
-/******************************************************************************
- *
- * Copyright (C) 2020 The Android Open Source Project
+/*
+ * Copyright (C) 2021 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,53 +12,51 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- *
- *****************************************************************************
- * Originally developed and contributed by Ittiam Systems Pvt. Ltd, Bangalore
  */
 
 package {
     // See: http://go/android-license-faq
     // A large-scale-change added 'default_applicable_licenses' to import
-    // all of the 'license_kinds' from "frameworks_av_license"
+    // all of the 'license_kinds' from "frameworks_av_media_libstagefright_httplive_license"
     // to get the below license kinds:
     //   SPDX-license-identifier-Apache-2.0
-    default_applicable_licenses: ["frameworks_av_license"],
+    default_applicable_licenses: [
+        "frameworks_av_media_libstagefright_httplive_license",
+    ],
 }
 
 cc_fuzz {
-    name: "mediadrm_fuzzer",
+    name: "httplive_fuzzer",
     srcs: [
-        "mediadrm_fuzzer.cpp",
+        "httplive_fuzzer.cpp",
     ],
     static_libs: [
-        "libmediadrm",
+        "libstagefright_httplive",
+        "libstagefright_id3",
+        "libstagefright_metadatautils",
+        "libstagefright_mpeg2support",
         "liblog",
-        "resourcemanager_aidl_interface-ndk",
+        "libcutils",
+        "libdatasource",
+        "libmedia",
+        "libstagefright",
     ],
     header_libs: [
-        "libmedia_headers",
-        "libmediadrm_headers",
+        "libbase_headers",
+        "libstagefright_foundation_headers",
+        "libstagefright_headers",
+        "libstagefright_httplive_headers",
     ],
     shared_libs: [
-        "libbinder",
-        "libutils",
-        "libbinder_ndk",
-        "libcutils",
-        "libdl",
-        "libmedia",
-        "libmediadrmmetrics_lite",
-        "libmediametrics#1",
-        "libmediautils",
+        "libcrypto",
         "libstagefright_foundation",
-        "android.hardware.drm@1.0",
-        "android.hardware.drm@1.1",
-        "android.hardware.drm@1.2",
-        "android.hardware.drm@1.3",
-        "android.hardware.drm@1.4",
-        "libhidlallocatorutils",
         "libhidlbase",
+        "libhidlmemory",
+        "libutils",
+        "android.hidl.allocator@1.0",
     ],
+    corpus: ["corpus/*"],
+    dictionary: "httplive_fuzzer.dict",
     fuzz_config: {
         cc: [
             "android-media-fuzzing-reports@google.com",

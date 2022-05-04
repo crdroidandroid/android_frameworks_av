@@ -485,19 +485,12 @@ private:
 public:
     Impl(const std::shared_ptr<C2Allocator> &allocator)
         : mInit(C2_OK), mProducerId(0), mGeneration(0),
-          mDqFailure(0), mLastDqTs(0), mLastDqLogTs(0),
-          mAllocator(allocator) {
+          mConsumerUsage(0), mDqFailure(0), mLastDqTs(0),
+          mLastDqLogTs(0), mAllocator(allocator) {
     }
 
     ~Impl() {
-        bool noInit = false;
         for (int i = 0; i < NUM_BUFFER_SLOTS; ++i) {
-            if (!noInit && mProducer) {
-                Return<HStatus> transResult =
-                        mProducer->detachBuffer(static_cast<int32_t>(i));
-                noInit = !transResult.isOk() ||
-                         static_cast<HStatus>(transResult) == HStatus::NO_INIT;
-            }
             mBuffers[i].clear();
         }
     }
@@ -606,15 +599,6 @@ public:
         {
             sp<GraphicBuffer> buffers[NUM_BUFFER_SLOTS];
             std::scoped_lock<std::mutex> lock(mMutex);
-            bool noInit = false;
-            for (int i = 0; i < NUM_BUFFER_SLOTS; ++i) {
-                if (!noInit && mProducer) {
-                    Return<HStatus> transResult =
-                            mProducer->detachBuffer(static_cast<int32_t>(i));
-                    noInit = !transResult.isOk() ||
-                             static_cast<HStatus>(transResult) == HStatus::NO_INIT;
-                }
-            }
             int32_t oldGeneration = mGeneration;
             if (producer) {
                 mProducer = producer;
@@ -661,6 +645,11 @@ public:
                   "bqId: %llu migrated buffers # %d",
                   generation, (unsigned long long)producerId, migrated);
         }
+        mConsumerUsage = usage;
+    }
+
+    void getConsumerUsage(uint64_t *consumeUsage) {
+        *consumeUsage = mConsumerUsage;
     }
 
 private:
@@ -669,6 +658,7 @@ private:
     c2_status_t mInit;
     uint64_t mProducerId;
     uint32_t mGeneration;
+    uint64_t mConsumerUsage;
     OnRenderCallback mRenderCallback;
 
     size_t mDqFailure;
@@ -1000,3 +990,10 @@ void C2BufferQueueBlockPool::setRenderCallback(const OnRenderCallback &renderCal
         mImpl->setRenderCallback(renderCallback);
     }
 }
+
+void C2BufferQueueBlockPool::getConsumerUsage(uint64_t *consumeUsage) {
+    if (mImpl) {
+        mImpl->getConsumerUsage(consumeUsage);
+    }
+}
+
