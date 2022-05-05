@@ -1584,6 +1584,14 @@ void CCodecBufferChannel::reset() {
         Mutexed<Output>::Locked output(mOutput);
         output->buffers.reset();
     }
+    if (mOutputSurface.lock()->surface) {
+        C2BlockPool::local_id_t outputPoolId;
+        {
+            Mutexed<BlockPools>::Locked pools(mBlockPools);
+            outputPoolId = pools->outputPoolId;
+        }
+        mComponent->stopUsingOutputSurface(outputPoolId);
+    }
 }
 
 void CCodecBufferChannel::release() {
