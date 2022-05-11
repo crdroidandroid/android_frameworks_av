@@ -151,7 +151,6 @@ void highpass_50Hz_at_12k8(
     int16 i, x2;
     int16 y2_hi, y2_lo, y1_hi, y1_lo, x0, x1;
     int32 L_tmp1;
-    int32 L_tmp2;
     int16 *pt_sign = signal;
 
     y2_hi = mem[0];
@@ -170,18 +169,19 @@ void highpass_50Hz_at_12k8(
 
         L_tmp1 = fxp_mac_16by16(y1_lo, 16211, 8192L);
         L_tmp1 = fxp_mac_16by16(y2_lo, -8021, L_tmp1);
-        L_tmp2 = fxp_mul_16by16(y1_hi, 32422);
-        L_tmp2 = fxp_mac_16by16(y2_hi, -16042, L_tmp2);
+        L_tmp1 = L_tmp1 >> 14;
+        L_tmp1 = fxp_mac_16by16(y1_hi, 32422, L_tmp1);
+        L_tmp1 = fxp_mac_16by16(y2_hi, -16042, L_tmp1);
 
         x2 = x1;
         x1 = x0;
         x0 = *pt_sign;
-        L_tmp2 = fxp_mac_16by16(x2,  8106, L_tmp2);
-        L_tmp2 = fxp_mac_16by16(x1, -16212, L_tmp2);
-        L_tmp2 = fxp_mac_16by16(x0,  8106, L_tmp2);
 
+        L_tmp1 = fxp_mac_16by16(x2,  8106, L_tmp1);
+        L_tmp1 = fxp_mac_16by16(x1, -16212, L_tmp1);
+        L_tmp1 = fxp_mac_16by16(x0,  8106, L_tmp1);
 
-        L_tmp1 = ((L_tmp1 >> 14) + L_tmp2) << 2;
+        L_tmp1 = L_tmp1 << 2;
 
         y2_hi = y1_hi;
         y2_lo = y1_lo;
