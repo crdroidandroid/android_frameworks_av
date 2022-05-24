@@ -286,6 +286,7 @@ cc_library {
         "StagefrightMediaScanner.cpp",
         "SurfaceMediaSource.cpp",
         "SurfaceUtils.cpp",
+        "TableXInit.cpp" ,
         "ThrottledSource.cpp",
         "Utils.cpp",
         "VideoFrameScheduler.cpp",
