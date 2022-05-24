@@ -64,6 +64,7 @@
 #include "include/SecureBuffer.h"
 #include "include/SharedMemoryBuffer.h"
 #include <media/stagefright/omx/OMXUtils.h>
+#include "TableXInit.h"
 
 #include <server_configurable_flags/get_flags.h>
 #include "TableXInit.h"
