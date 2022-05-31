@@ -2070,8 +2070,8 @@ void CCodecBufferChannel::sendOutputBuffers() {
         case OutputBuffers::DISCARD:
             break;
         case OutputBuffers::NOTIFY_CLIENT:
-            output.unlock();
             mCallback->onOutputBufferAvailable(index, outBuffer);
+            output.unlock();
             break;
         case OutputBuffers::REALLOCATE:
             if (++reallocTryNum > kMaxReallocTry) {
