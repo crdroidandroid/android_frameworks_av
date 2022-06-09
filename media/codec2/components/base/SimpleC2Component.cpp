@@ -334,7 +334,7 @@ void convertYUV420Planar16ToY410OrRGBA1010102(
         size_t srcYStride, size_t srcUStride,
         size_t srcVStride, size_t dstStride, size_t width, size_t height,
         std::shared_ptr<const C2ColorAspectsStruct> aspects) {
-    if (isAtLeastT()) {
+    if (isVendorApiOrFirstApiAtLeastT()) {
         convertYUV420Planar16ToRGBA1010102(dst, srcY, srcU, srcV, srcYStride, srcUStride,
                                            srcVStride, dstStride, width, height, aspects);
     } else {
@@ -996,7 +996,7 @@ int SimpleC2Component::getHalPixelFormatForBitDepth10(bool allowRGBA1010102) {
     // From Android T onwards, HAL_PIXEL_FORMAT_RGBA_1010102 corresponds to true
     // RGBA 1010102 format unlike earlier versions where it was used to represent
     // YUVA 1010102 data
-    if (!isAtLeastT()) {
+    if (!isVendorApiOrFirstApiAtLeastT()) {
         // When RGBA1010102 is not allowed and if the first supported hal pixel is format is
         // HAL_PIXEL_FORMAT_RGBA_1010102, then return HAL_PIXEL_FORMAT_YV12
         if (!allowRGBA1010102 && mBitDepth10HalPixelFormats[0] == HAL_PIXEL_FORMAT_RGBA_1010102) {
