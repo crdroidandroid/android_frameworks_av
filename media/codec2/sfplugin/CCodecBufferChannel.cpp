@@ -2042,6 +2042,9 @@ void CCodecBufferChannel::sendOutputBuffers() {
     sp<MediaCodecBuffer> outBuffer;
     std::shared_ptr<C2Buffer> c2Buffer;
 
+    constexpr int kMaxReallocTry = 5;
+    int reallocTryNum = 0;
+
     while (true) {
         Mutexed<Output>::Locked output(mOutput);
         if (!output->buffers) {
@@ -2049,6 +2052,9 @@ void CCodecBufferChannel::sendOutputBuffers() {
         }
         action = output->buffers->popFromStashAndRegister(
                 &c2Buffer, &index, &outBuffer);
+        if (action != OutputBuffers::REALLOCATE) {
+            reallocTryNum = 0;
+        }
         switch (action) {
         case OutputBuffers::SKIP:
             return;
@@ -2059,6 +2065,13 @@ void CCodecBufferChannel::sendOutputBuffers() {
             mCallback->onOutputBufferAvailable(index, outBuffer);
             break;
         case OutputBuffers::REALLOCATE:
+            if (++reallocTryNum > kMaxReallocTry) {
+                output.unlock();
+                ALOGE("[%s] sendOutputBuffers: tried %d realloc and failed",
+                          mName, kMaxReallocTry);
+                mCCodecCallback->onError(UNKNOWN_ERROR, ACTION_CODE_FATAL);
+                return;
+            }
             if (!output->buffers->isArrayMode()) {
                 output->buffers =
                     output->buffers->toArrayMode(output->numSlots);
