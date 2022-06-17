@@ -936,6 +936,12 @@ ATSParser::Stream::Stream(
             return;
     }
 
+    if (mode == ElementaryStreamQueue::INVALID) {
+        ALOGE("stream PID 0x%02x has invalid stream mType:0x%02x or mTypeExt:0x%02x",
+                info.mPID, info.mType, info.mTypeExt);
+        return;
+    }
+
     mQueue = new ElementaryStreamQueue(mode, flags);
 
     if (mQueue != NULL) {
