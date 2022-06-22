@@ -1721,11 +1721,13 @@ bool CCodecBufferChannel::handleWork(
 
     // Whether the output buffer should be reported to the client or not.
     bool notifyClient = false;
+    bool isFlushedWork = false;
 
     if (work->result == C2_OK){
         notifyClient = true;
     } else if (work->result == C2_NOT_FOUND) {
         ALOGD("[%s] flushed work; ignored.", mName);
+        isFlushedWork = true;
     } else {
         // C2_OK and C2_NOT_FOUND are the only results that we accept for processing
         // the config update.
@@ -2035,6 +2037,11 @@ bool CCodecBufferChannel::handleWork(
                 worklet->output.ordinal);
     }
     sendOutputBuffers();
+
+    if (isFlushedWork) {
+        return false;
+    }
+
     return true;
 }
 
