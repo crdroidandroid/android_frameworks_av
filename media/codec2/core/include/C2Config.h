@@ -872,6 +872,8 @@ typedef C2PortParam<C2Tuning, C2Uint32Value, kParamIndexDelay> C2PortDelayTuning
 typedef C2PortDelayTuning C2PortActualDelayTuning; // deprecated
 constexpr char C2_PARAMKEY_INPUT_DELAY[] = "input.delay";
 constexpr char C2_PARAMKEY_OUTPUT_DELAY[] = "output.delay";
+constexpr char C2_PARAMKEY_INPUT_BUFFER_NUM[] = "android._num-input-buffers";
+constexpr char C2_PARAMKEY_OUTPUT_BUFFER_NUM[] = "android._num-output-buffers";
 
 // read-only
 typedef C2GlobalParam<C2Tuning, C2Uint32Value, kParamIndexDelay> C2PipelineDelayTuning;

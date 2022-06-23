@@ -647,6 +647,12 @@ void CCodecConfig::initializeStandardParams() {
     add(ConfigMapper(C2_PARAMKEY_TEMPORAL_LAYERING, C2_PARAMKEY_TEMPORAL_LAYERING, "")
         .limitTo(D::ENCODER & D::VIDEO & D::OUTPUT));
 
+    add(ConfigMapper("android._num-input-buffers", C2_PARAMKEY_INPUT_BUFFER_NUM, "value")
+        .limitTo(D::VIDEO & D::PARAM & D::INPUT));
+
+    add(ConfigMapper("android._num-output-buffers", C2_PARAMKEY_OUTPUT_BUFFER_NUM, "value")
+        .limitTo(D::VIDEO & D::PARAM & D::OUTPUT));
+
     // Pixel Format (use local key for actual pixel format as we don't distinguish between
     // SDK layouts for flexible format and we need the actual SDK color format in the media format)
     add(ConfigMapper("android._color-format",  C2_PARAMKEY_PIXEL_FORMAT, "value")
