@@ -39,6 +39,9 @@ class IMediaSource;
 class MediaBuffer;
 struct MediaClock;
 struct NuCachedSource2;
+//mtkadd+
+class IMediaExtractor;
+//mtkadd-
 
 struct NuPlayer::GenericSource : public NuPlayer::Source,
                                  public MediaBufferObserver // Modular DRM
@@ -238,6 +241,20 @@ private:
     Vector<String8> mMimes;
 
     status_t checkDrmInfo();
+
+//mtkadd+
+    pid_t mPID;
+    sp<IMediaExtractor> mExtractor;
+    bool mIsMtkMp3;
+    bool mIsMtkAlac;
+    void init();
+public:
+    virtual void setGetMp3Param(int32_t *flag, bool set);
+
+private:
+    // add for TS
+    bool isTS();
+//mtkadd-
 
     DISALLOW_EVIL_CONSTRUCTORS(GenericSource);
 };

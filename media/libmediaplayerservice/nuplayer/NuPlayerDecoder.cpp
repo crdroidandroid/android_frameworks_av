@@ -346,6 +346,19 @@ void NuPlayer::Decoder::onConfigure(const sp<AMessage> &format) {
     ALOGV("onConfigure mCrypto: %p (%d)  mIsSecure: %d",
             crypto.get(), (crypto != NULL ? crypto->getStrongCount() : 0), mIsSecure);
 
+//mtkadd+
+    if (!strcasecmp(mComponentName.c_str(), "OMX.MTK.AUDIO.DECODER.MP3")) {
+        int32_t mtkmp3extractorFlag = 0;
+        //get mtkmp3extractor flag
+        mSource->setGetMp3Param(&mtkmp3extractorFlag, false /*get*/);
+        if (mtkmp3extractorFlag == 1) {
+            format->setInt32("mtk-mp3extractor", 1);
+            format->setInt32("app-pid", (int32_t)mPid);
+            ALOGV("set mp3 lowpwer flag to decoder app-pid:%ld", (long)mPid);
+        }
+    }
+//mtkadd-
+
     err = mCodec->configure(
             format, mSurface, crypto, 0 /* flags */);
 
@@ -394,6 +407,15 @@ void NuPlayer::Decoder::onConfigure(const sp<AMessage> &format) {
 
     mPaused = false;
     mResumePending = false;
+
+//mtkadd+ for mp3 lowpower
+    int32_t mtkMp3Codec = 0;
+    if (!strcasecmp(mComponentName.c_str(), "OMX.MTK.AUDIO.DECODER.MP3")
+            && format->findInt32("mtkMp3Codec", &mtkMp3Codec)) {
+        ALOGV("turn on mp3 codec lowpower mode,mtkMp3Codec:%d.",mtkMp3Codec);
+        mSource->setGetMp3Param(&mtkMp3Codec, true /*set*/); //set mp3 codec sucessfully
+    }
+//mtkadd-
 }
 
 void NuPlayer::Decoder::onSetParameters(const sp<AMessage> &params) {

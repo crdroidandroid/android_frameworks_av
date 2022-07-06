@@ -165,6 +165,7 @@ public:
     virtual media_status_t read(
             MediaBufferHelper **buffer, const ReadOptions *options = NULL) = 0;
     virtual bool supportsNonBlockingRead() { return false; }
+virtual const char * extractorName() { return ""; }
 protected:
     friend CMediaTrack *wrap(MediaTrackHelper *track);
     MediaBufferGroupHelper *mBufferGroup;
@@ -177,7 +178,13 @@ inline CMediaTrack *wrap(MediaTrackHelper *track) {
     CMediaTrack *wrapper = (CMediaTrack*) malloc(sizeof(CMediaTrack));
     wrapper->data = track;
     wrapper->free = [](void *data) -> void {
-        delete (MediaTrackHelper*)(data);
+        // delete MtkAVISource in ~MtkAVIExtractor
+        if (strcmp(((MediaTrackHelper*)data)->extractorName(), "MtkAVIExtractor")) {
+            delete (MediaTrackHelper*)(data);
+        } else {
+            //  stop MTKAVISource to release buffer (for mp3 clone buffer)
+            ((MediaTrackHelper*)data)->stop();
+        }
     };
     wrapper->start = [](void *data, CMediaBufferGroup *bufferGroup) -> media_status_t {
         if (((MediaTrackHelper*)data)->mBufferGroup) {

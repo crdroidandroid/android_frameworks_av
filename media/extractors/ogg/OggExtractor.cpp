@@ -972,6 +972,7 @@ void MyOggExtractor::buildTableOfContents() {
     Page page;
     ssize_t pageSize;
     while ((pageSize = readPage(offset, &page)) > 0) {
+        if ((page.mFlags & 1) == 0) {
         mTableOfContents.push();
 
         TOCEntry &entry =
@@ -979,7 +980,7 @@ void MyOggExtractor::buildTableOfContents() {
 
         entry.mPageOffset = offset;
         entry.mTimeUs = getTimeUsOfGranule(page.mGranulePosition);
-
+        }
         offset += (size_t)pageSize;
     }
 

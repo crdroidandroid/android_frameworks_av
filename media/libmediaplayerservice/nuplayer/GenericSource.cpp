@@ -20,6 +20,7 @@
 #include "GenericSource.h"
 #include "NuPlayerDrm.h"
 
+#include <binder/IPCThreadState.h>
 #include <binder/IServiceManager.h>
 #include <cutils/properties.h>
 #include <datasource/PlayerServiceDataSourceFactory.h>
@@ -84,6 +85,9 @@ NuPlayer::GenericSource::GenericSource(
     mBufferingSettings.mInitialMarkMs = kInitialMarkMs;
     mBufferingSettings.mResumePlaybackMarkMs = kResumePlaybackMarkMs;
     resetDataSource();
+//mtkadd+
+    init();
+//mtkadd-
 }
 
 void NuPlayer::GenericSource::resetDataSource() {
@@ -200,6 +204,23 @@ status_t NuPlayer::GenericSource::initFromDataSource() {
             mDurationUs = duration;
         }
     }
+
+//mtkadd+
+    //for mp3 low power
+    mExtractor = extractor;
+    const char *extractorName = mExtractor->name();
+    if (extractorName != NULL
+            && !strcasecmp(extractorName, "MtkMP3Extractor")) {
+        mIsMtkMp3 = true;
+    } else if (extractorName != NULL
+            && !strcasecmp(extractorName, "CAFExtractor")) {
+        mIsMtkAlac = true;
+    }
+    if (mIsMtkMp3 && mPID < 0xffffffff) {
+        ALOGV("initFromDataSource, set mPID:%d to MtkMP3Extractor!",mPID);
+        sp<MetaData> mp3Meta = extractor->getTrackMetaData(0, mPID);
+    }
+//mtkadd-
 
     int32_t totalBitrate = 0;
 
@@ -342,6 +363,10 @@ bool NuPlayer::GenericSource::isStreaming() const {
 
 NuPlayer::GenericSource::~GenericSource() {
     ALOGV("~GenericSource");
+    //mtkadd for stop toc thread before source release.
+    if ((mIsMtkMp3 || mIsMtkAlac) && mAudioTrack.mSource != NULL) {
+        mAudioTrack.mSource->stop();
+    }
     if (mLooper != NULL) {
         mLooper->unregisterHandler(id());
         mLooper->stop();
@@ -1336,6 +1361,13 @@ void NuPlayer::GenericSource::readBuffer(
         case MEDIA_TRACK_TYPE_AUDIO:
             track = &mAudioTrack;
             maxBuffers = 64;
+// mtkadd+
+            // add for TS, resolve 4k video play not smooth, too many buffers will cause parse audio too long time.
+            // it will block video parse, as TS video and audio is interleave.
+            if (isTS()) {
+                maxBuffers = 8;
+            }
+// mtkadd-
             break;
         case MEDIA_TRACK_TYPE_SUBTITLE:
             track = &mSubtitleTrack;
@@ -1716,5 +1748,38 @@ void NuPlayer::GenericSource::signalBufferReturned(MediaBufferBase *buffer)
     buffer->setObserver(NULL);
     buffer->release(); // this leads to delete since that there is no observor
 }
+
+//mtkadd+
+
+void NuPlayer::GenericSource::init() {
+    mExtractor = NULL;
+    mIsMtkMp3 = false;
+    mIsMtkAlac = false;
+    mPID = IPCThreadState::self()->getCallingPid();
+}
+
+void NuPlayer::GenericSource::setGetMp3Param(int32_t *flag, bool set) {
+    if (!set) {  //getflag
+        *flag = mIsMtkMp3 ? 1 : 0;
+        return;
+    }
+    //set flag
+    if (mIsMtkMp3 && *flag == 1) {
+        ALOGV("set mp3 codec sucessfully");
+        mExtractor->getTrackMetaData(0/*index*/, 0xffffffff/*flag*/);
+    }
+}
+
+// for TS
+bool NuPlayer::GenericSource::isTS() {
+    const char *mime = NULL;
+    if (mFileMeta != NULL && mFileMeta->findCString(kKeyMIMEType, &mime)
+            && !strcasecmp(mime, MEDIA_MIMETYPE_CONTAINER_MPEG2TS)) {
+        return true;
+    }
+    return false;
+}
+//mtkadd-
+
 
 }  // namespace android
