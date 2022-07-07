@@ -51,6 +51,9 @@ const int kStopTimeoutUs = 300000; // allow 1 sec for shutting down encoder
 // input source.
 const int kMaxStopTimeOffsetUs = 1000000;
 
+static const uint32_t kQueuedBufferMax = 100;  // default queue about 1s datas before drop frames
+static const uint32_t kDropCountOnce = 30;
+
 struct MediaCodecSource::Puller : public AHandler {
     explicit Puller(const sp<MediaSource> &source);
 
@@ -127,6 +130,15 @@ MediaCodecSource::Puller::~Puller() {
 
 void MediaCodecSource::Puller::Queue::pushBuffer(MediaBufferBase *mbuf) {
     mReadBuffers.push_back(mbuf);
+    if (mReadBuffers.size() > kQueuedBufferMax + kDropCountOnce) {
+        ALOGW("Queued buffers(%zu) > %u, dropped frames!!", mReadBuffers.size(), kQueuedBufferMax + kDropCountOnce);
+        MediaBufferBase *mbuffer;
+        while (mReadBuffers.size() > kQueuedBufferMax) {
+            if (readBuffer(&mbuffer)) {
+                mbuffer->release();
+            }
+        }
+    }
 }
 
 bool MediaCodecSource::Puller::Queue::readBuffer(MediaBufferBase **mbuf) {
@@ -208,6 +220,7 @@ void MediaCodecSource::Puller::stopSource() {
 void MediaCodecSource::Puller::pause() {
     Mutexed<Queue>::Locked queue(mQueue);
     queue->mPaused = true;
+    queue->flush();
 }
 
 void MediaCodecSource::Puller::resume() {
@@ -473,6 +486,10 @@ MediaCodecSource::MediaCodecSource(
       mPausePending(false),
       mFirstSampleTimeUs(-1LL),
       mGeneration(0) {
+// add for mtk avoid timeUs back when resume after pause.
+    mLastTimeUs = -1ll;
+    mFrameDropped = false;
+// ~add for mtk
     CHECK(mLooper != NULL);
 
     if (!(mFlags & FLAG_USE_SURFACE_INPUT)) {
@@ -730,6 +747,16 @@ status_t MediaCodecSource::feedEncoderInputBuffers() {
 
             timeUs += mInputBufferTimeOffsetUs;
 
+// add for mtk avoid timeUs back when resume after pause.
+            if (timeUs <= mLastTimeUs) {
+                ALOGW("%s mLastTimeUs(%lld us)>= timeUs(%lld us),release buffer!!!",
+                        mIsVideo ? "video" : "audio", (long long)mLastTimeUs, (long long)timeUs);
+                mbuf->release();
+                mAvailEncoderInputIndices.push_back(bufferIndex);  // available input buffer not use, push back
+                continue;
+            }
+//  ~add for mtk
+
             // push decoding time for video, or drift time for audio
             if (mIsVideo) {
                 mDecodingTimeQueue.push_back(timeUs);
@@ -792,6 +819,10 @@ status_t MediaCodecSource::feedEncoderInputBuffers() {
 
         status_t err = mEncoder->queueInputBuffer(
                 bufferIndex, 0, size, timeUs, flags);
+
+// add for mtk avoid timeUs back when resume after pause.
+        mLastTimeUs = timeUs;
+//  ~add for mtk
 
         if (err != OK) {
             return err;
@@ -976,6 +1007,30 @@ void MediaCodecSource::onMessageReceived(const sp<AMessage> &msg) {
                         // Timestamp offset is already adjusted in GraphicBufferSource.
                         // GraphicBufferSource is supposed to discard samples
                         // queued before start, and offset timeUs by start time
+// add for mtk avoid timeUs back when resume after pause.
+                        if (timeUs <= mLastTimeUs) {
+                            ALOGW("video mLastTimeUs(%lld us)> timeUs(%lld us),release buffer!!!",
+                                    (long long)mLastTimeUs, (long long)timeUs);
+                            mbuf->release();
+                            mEncoder->releaseOutputBuffer(index);
+                            mFrameDropped = true;
+                            mEncoder->requestIDRFrame();
+                            break;
+                        } else {
+                            int32_t isSync = false;
+                            if (flags & MediaCodec::BUFFER_FLAG_SYNCFRAME) {
+                                isSync = true;
+                            }
+                            if (mFrameDropped && !isSync) {
+                                ALOGD("Wait IDR frame after droped video frames");
+                                mbuf->release();
+                                mEncoder->releaseOutputBuffer(index);
+                                break;
+                            }
+                            mFrameDropped = false;
+                        }
+
+//  ~add for mtk
                         CHECK_GE(timeUs, 0LL);
                         // TODO:
                         // Decoding time for surface source is unavailable,
@@ -1003,6 +1058,11 @@ void MediaCodecSource::onMessageReceived(const sp<AMessage> &msg) {
                             timeUs, timeUs / 1E6, driftTimeUs);
                 }
                 mbuf->meta_data().setInt64(kKeyTime, timeUs);
+// add for mtk avoid timeUs back when resume after pause.
+                if (mFlags & FLAG_USE_SURFACE_INPUT) {
+                    mLastTimeUs = timeUs;
+                }
+//  ~add for mtk
             } else {
                 mbuf->meta_data().setInt64(kKeyTime, 0LL);
                 mbuf->meta_data().setInt32(kKeyIsCodecConfig, true);

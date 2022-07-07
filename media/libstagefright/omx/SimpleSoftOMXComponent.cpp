@@ -487,6 +487,17 @@ void SimpleSoftOMXComponent::onSendCommand(
 }
 
 void SimpleSoftOMXComponent::onChangeState(OMX_STATETYPE state) {
+// Fix AOSP timing issue +++
+    // Timing issue.
+    // If binder die comes, When freeBuffer do not complete.
+    // But onChangeState() called by freeNode() is called after all buffer freed.
+    // At this time, state == OMX_StateLoaded. mState ==  OMX_StateLoaded.
+    // So there is no need to do something when state == mState.
+    if (state == mState) {
+        ALOGE("Warnning: state==mState, mState = %d, mTargetState=%d", state, mTargetState);
+        return;
+    }
+// Fix AOSP timing issue ---
     ALOGV("%p requesting change from %d to %d", this, mState, state);
     // We shouldn't be in a state transition already.
 

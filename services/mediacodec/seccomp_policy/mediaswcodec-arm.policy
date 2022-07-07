@@ -63,6 +63,7 @@ exit_group: 1
 restart_syscall: 1
 rt_sigreturn: 1
 getrandom: 1
+# libc_malloc_debug -> libc
 madvise: 1
 
 # crash dump policy additions
@@ -84,6 +85,10 @@ geteuid32: 1
 getgid32: 1
 getegid32: 1
 getgroups32: 1
+# asan only policy
+readlink: 1
+# ubsan only policy
+open: 1
 sysinfo: 1
 
 @include /apex/com.android.media.swcodec/etc/seccomp_policy/code_coverage.arm.policy
