@@ -1488,6 +1488,7 @@ status_t CCodecBufferChannel::prepareInitialInputBuffers(
     }
 
     size_t numInputSlots = mInput.lock()->numSlots;
+    size_t numActiveSlots = 0;
 
     {
         Mutexed<Input>::Locked input(mInput);
@@ -1499,8 +1500,14 @@ status_t CCodecBufferChannel::prepareInitialInputBuffers(
             }
             clientInputBuffers->emplace(index, buffer);
         }
+        numActiveSlots = input->buffers->numActiveSlots();
     }
     if (clientInputBuffers->empty()) {
+        if (numActiveSlots > 0) {
+           ALOGW("[%s] all ip slots either owned by client or with component", mName);
+           return WOULD_BLOCK;
+        }
+
         ALOGW("[%s] start: cannot allocate memory at all", mName);
         return NO_MEMORY;
     } else if (clientInputBuffers->size() < numInputSlots) {
