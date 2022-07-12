@@ -2149,6 +2149,9 @@ void CCodec::signalResume() {
     status_t err = mChannel->prepareInitialInputBuffers(&clientInputBuffers);
     // FIXME(b/237656746)
     if (err != OK && err != NO_MEMORY) {
+        if (err == WOULD_BLOCK) {
+            return;
+        }
         ALOGE("Resume request for Input Buffers failed");
         mCallback->onError(err, ACTION_CODE_FATAL);
         return;
