@@ -74,7 +74,7 @@ camera3::Size SessionConfigurationUtils::getMaxJpegResolution(const CameraMetada
 
 size_t SessionConfigurationUtils::getUHRMaxJpegBufferSize(camera3::Size uhrMaxJpegSize,
         camera3::Size defaultMaxJpegSize, size_t defaultMaxJpegBufferSize) {
-    return (uhrMaxJpegSize.width * uhrMaxJpegSize.height) /
+    return ((float)uhrMaxJpegSize.width * uhrMaxJpegSize.height) /
             (defaultMaxJpegSize.width * defaultMaxJpegSize.height) * defaultMaxJpegBufferSize;
 }
 
