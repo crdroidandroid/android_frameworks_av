@@ -99,6 +99,9 @@ static audio_format_t getAudioFormat(AudioEncoding e) {
        case kAudioEncodingPcm24bitPacked:
             format = AUDIO_FORMAT_PCM_24_BIT_PACKED;
             break;
+       case kAudioEncodingPcm32bit:
+            format = AUDIO_FORMAT_PCM_32_BIT;
+            break;
         default:
             ALOGE("Invalid AudioEncoding %d", e);
         }
@@ -111,6 +114,7 @@ static size_t getAudioSampleSize(AudioEncoding e) {
         case kAudioEncodingPcm8bit:
         case kAudioEncodingPcmFloat:
         case kAudioEncodingPcm24bitPacked:
+        case kAudioEncodingPcm32bit:
             return audio_bytes_per_sample(getAudioFormat(e));
         default: return 0;
     }
@@ -141,7 +145,15 @@ status_t AudioConverter::safeConvert(const sp<MediaCodecBuffer> &src, sp<MediaCo
     } else if (mTo == kAudioEncodingPcmFloat && mFrom == kAudioEncodingPcm16bit) {
         memcpy_to_float_from_i16((float*)tgt->base(), (const int16_t*)src->data(), src->size() / 2);
     } else {
-        return INVALID_OPERATION;
+        audio_format_t srcFormat = getAudioFormat(mFrom);
+        audio_format_t dstFormat = getAudioFormat(mTo);
+
+        if ((srcFormat == AUDIO_FORMAT_INVALID) || (dstFormat == AUDIO_FORMAT_INVALID))
+            return INVALID_OPERATION;
+
+        size_t frames = src->size() / audio_bytes_per_sample(srcFormat);
+        memcpy_by_audio_format((void*)tgt->base(), dstFormat, (void*)src->data(),
+                srcFormat, frames);
     }
     return OK;
 }
