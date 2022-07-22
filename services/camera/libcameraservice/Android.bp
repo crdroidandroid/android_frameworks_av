@@ -37,6 +37,10 @@ license {
 
 cc_library_shared {
     name: "libcameraservice",
+    defaults: [
+        "uses_oplus_camera_defaults",
+        "uses_nothing_camera_defaults",
+    ],
 
     // Camera service source
 
