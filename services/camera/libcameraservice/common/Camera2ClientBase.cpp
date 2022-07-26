@@ -296,14 +296,6 @@ binder::Status Camera2ClientBase<TClientBase>::disconnectImpl() {
 
     ALOGD("Camera %s: Shutting down", TClientBase::mCameraIdStr.string());
 
-    // Before detaching the device, cache the info from current open session.
-    // The disconnected check avoids duplication of info and also prevents
-    // deadlock while acquiring service lock in cacheDump.
-    if (!TClientBase::mDisconnected) {
-        ALOGD("Camera %s: start to cacheDump", TClientBase::mCameraIdStr.string());
-        Camera2ClientBase::getCameraService()->cacheDump();
-    }
-
     detachDevice();
 
     CameraService::BasicClient::disconnect();
