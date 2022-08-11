@@ -513,10 +513,6 @@ status_t Camera3OutputStream::returnBufferCheckedLocked(
         mStreamUnpreparable = true;
     }
 
-    if (res != OK) {
-        close(anwReleaseFence);
-    }
-
     *releaseFenceOut = releaseFence;
 
     return res;
