@@ -25,6 +25,7 @@
 #include <libxml/parser.h>
 #include <libxml/xinclude.h>
 #include <media/convert.h>
+#include <cutils/properties.h>
 #include <utils/Log.h>
 #include <utils/StrongPointer.h>
 #include <utils/Errors.h>
@@ -885,6 +886,30 @@ status_t PolicySerializer::deserialize(const char *configFile, AudioPolicyConfig
     if (status != NO_ERROR) {
         return status;
     }
+
+   // Remove modules called bluetooth, bluetooth_qti or a2dp, and inject our own
+    if (property_get_bool("persist.bluetooth.system_audio_hal.enabled", false)) {
+	    for (auto it = modules.begin(); it != modules.end(); it++) {
+		    const char *name = (*it)->getName();
+		    if (strcmp(name, "a2dp") == 0 ||
+				    strcmp(name, "a2dpsink") == 0 ||
+				    strcmp(name, "bluetooth") == 0 ||
+				    strcmp(name, "bluetooth_qti") == 0) {
+
+			    ALOGE("Removed module %s\n", name);
+			    it = modules.erase(it);
+		    }
+		    if (it == modules.end()) break;
+	    }
+	    const char* a2dpFileName = "/system/etc/sysbta_audio_policy_configuration.xml";
+	    if (version == "7.0")
+		    a2dpFileName = "/system/etc/sysbta_audio_policy_configuration_7_0.xml";
+	    auto doc = make_xmlUnique(xmlParseFile(a2dpFileName));
+	    xmlNodePtr root = xmlDocGetRootElement(doc.get());
+	    auto maybeA2dpModule = deserialize<ModuleTraits>(root, config);
+	    modules.add(std::get<1>(maybeA2dpModule));
+    }
+
     config->setHwModules(modules);
 
     // Global Configuration
