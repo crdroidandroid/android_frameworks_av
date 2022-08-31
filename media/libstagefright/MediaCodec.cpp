@@ -4030,7 +4030,7 @@ void MediaCodec::onMessageReceived(const sp<AMessage> &msg) {
                                     err = mCodec->setSurface(surface);
                                 }
                             }
-                            if (err == OK) {
+                            if (err == OK && mSurface->getIGraphicBufferProducer() == nullptr) {
                                 (void)disconnectFromSurface();
                                 mSurface = surface;
                             }
