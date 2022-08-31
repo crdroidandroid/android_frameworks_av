@@ -85,6 +85,10 @@ private:
     HStatus addListenerInternal(const sp<T>& listener,
                                 std::vector<hardware::CameraStatus>* cameraStatusAndIds);
 
+    template<class T>
+    HStatus addListenerInternal_2_1(const sp<T>& listener,
+                                std::vector<hardware::CameraStatus>* cameraStatusAndIds);
+
     void addToListenerCacheLocked(sp<HCameraServiceListener> hListener,
                                   sp<hardware::ICameraServiceListener> csListener);
 
