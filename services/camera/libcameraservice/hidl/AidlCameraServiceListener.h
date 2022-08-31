@@ -39,12 +39,44 @@ using hardware::BpCameraServiceListener;
 using camerahybrid::H2BConverter;
 using HCameraDeviceStatus = frameworks::cameraservice::service::V2_0::CameraDeviceStatus;
 typedef frameworks::cameraservice::service::V2_0::ICameraServiceListener HCameraServiceListener;
+typedef frameworks::cameraservice::service::V2_1::ICameraServiceListener HCameraServiceListener2_1;
 
 struct H2BCameraServiceListener :
     public H2BConverter<HCameraServiceListener, ICameraServiceListener, BnCameraServiceListener> {
     H2BCameraServiceListener(const sp<HalInterface>& base) : CBase(base) { }
 
     ~H2BCameraServiceListener() { }
+
+    virtual ::android::binder::Status onStatusChanged(int32_t status,
+            const ::android::String16& cameraId) override;
+    virtual ::android::binder::Status onPhysicalCameraStatusChanged(int32_t status,
+            const ::android::String16& cameraId,
+            const ::android::String16& physicalCameraId) override;
+
+    virtual ::android::binder::Status onTorchStatusChanged(
+            int32_t status, const ::android::String16& cameraId) override;
+    virtual ::android::binder::Status onTorchStrengthLevelChanged(
+            const ::android::String16& cameraId, int32_t newStrengthLevel) override;
+    virtual binder::Status onCameraAccessPrioritiesChanged() {
+        // TODO: no implementation yet.
+        return binder::Status::ok();
+    }
+    virtual binder::Status onCameraOpened(const ::android::String16& /*cameraId*/,
+            const ::android::String16& /*clientPackageId*/) {
+        // empty implementation
+        return binder::Status::ok();
+    }
+    virtual binder::Status onCameraClosed(const ::android::String16& /*cameraId*/) {
+        // empty implementation
+        return binder::Status::ok();
+    }
+};
+
+struct H2BCameraServiceListener_2_1 :
+    public H2BConverter<HCameraServiceListener2_1, ICameraServiceListener, BnCameraServiceListener> {
+    H2BCameraServiceListener_2_1(const sp<HalInterface>& base) : CBase(base) { }
+
+    ~H2BCameraServiceListener_2_1() { }
 
     virtual ::android::binder::Status onStatusChanged(int32_t status,
             const ::android::String16& cameraId) override;
