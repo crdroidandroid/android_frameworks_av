@@ -75,6 +75,47 @@ binder::Status H2BCameraServiceListener::onPhysicalCameraStatusChanged(
   return binder::Status::ok();
 }
 
+binder::Status H2BCameraServiceListener_2_1::onStatusChanged(
+    int32_t status, const ::android::String16& cameraId) {
+  HCameraDeviceStatus hCameraDeviceStatus = convertToHidlCameraDeviceStatus(status);
+  CameraStatusAndId cameraStatusAndId;
+  cameraStatusAndId.deviceStatus = hCameraDeviceStatus;
+  cameraStatusAndId.cameraId = String8(cameraId).string();
+  auto ret = mBase->onStatusChanged(cameraStatusAndId);
+  if (!ret.isOk()) {
+      ALOGE("%s OnStatusChanged callback failed due to %s",__FUNCTION__,
+            ret.description().c_str());
+  }
+  return binder::Status::ok();
+}
+
+binder::Status H2BCameraServiceListener_2_1::onPhysicalCameraStatusChanged(
+    int32_t status, const ::android::String16& cameraId,
+    const ::android::String16& physicalCameraId) {
+  HCameraDeviceStatus hCameraDeviceStatus = convertToHidlCameraDeviceStatus(status);
+  V2_1::PhysicalCameraStatusAndId cameraStatusAndId;
+  cameraStatusAndId.deviceStatus = hCameraDeviceStatus;
+  cameraStatusAndId.cameraId = String8(cameraId).string();
+  cameraStatusAndId.physicalCameraId = String8(physicalCameraId).string();
+  auto ret = mBase->onPhysicalCameraStatusChanged(cameraStatusAndId);
+  if (!ret.isOk()) {
+    ALOGE("%s OnPhysicalCameraStatusChanged callback failed due to %s",__FUNCTION__,
+        ret.description().c_str());
+  }
+  return binder::Status::ok();
+}
+
+::android::binder::Status H2BCameraServiceListener_2_1::onTorchStatusChanged(
+    int32_t, const ::android::String16&) {
+  // We don't implement onTorchStatusChanged
+  return binder::Status::ok();
+}
+
+::android::binder::Status H2BCameraServiceListener_2_1::onTorchStrengthLevelChanged(
+    const ::android::String16&, int32_t) {
+  return binder::Status::ok();
+}
+
 } // implementation
 } // V2_0
 } // common
