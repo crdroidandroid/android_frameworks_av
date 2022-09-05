@@ -957,6 +957,10 @@ public:
 
                 void        setVolumeForOutput_l(float left, float right) const override;
 
+                status_t    setAppVolume(const String8& packageName, const float value);
+                status_t    setAppMute(const String8& packageName, const bool muted);
+                void        listAppVolumes(std::set<media::AppVolume> &container);
+
                 sp<Track>   createTrack_l(
                                 const sp<AudioFlinger::Client>& client,
                                 audio_stream_type_t streamType,
