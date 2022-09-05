@@ -341,6 +341,14 @@ private:
     Mutex               mUnregisteredWritersLock;
 
 public:
+    status_t    setAppVolume(const String8& packageName, const float value);
+    status_t    setAppMute(const String8& packageName, const bool value);
+    status_t    listAppVolumes(std::vector<media::AppVolume> *vols);
+
+private:
+    std::map<String8, media::AppVolume>  mAppVolumeConfigs;
+
+public:
     // Life cycle of gAudioFlinger and AudioFlinger:
     //
     // AudioFlinger is created once and survives until audioserver crashes

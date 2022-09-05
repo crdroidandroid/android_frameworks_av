@@ -45,6 +45,7 @@ aidl_interface {
         "aidl/android/media/InterpolatorConfig.aidl",
         "aidl/android/media/InterpolatorType.aidl",
         "aidl/android/media/MicrophoneInfoData.aidl",
+        "aidl/android/media/AppVolumeData.aidl",
         "aidl/android/media/VolumeShaperConfiguration.aidl",
         "aidl/android/media/VolumeShaperConfigurationOptionFlag.aidl",
         "aidl/android/media/VolumeShaperConfigurationType.aidl",
