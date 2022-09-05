@@ -1158,6 +1158,15 @@ status_t AudioFlinger::createTrack(const media::CreateTrackRequest& _input,
         output.portId = portId;
 
         if (lStatus == NO_ERROR) {
+            // set volume
+            String8 trackCreatorPackage = track->getPackageName();
+            if (!trackCreatorPackage.isEmpty() &&
+                mAppVolumeConfigs.find(trackCreatorPackage) != mAppVolumeConfigs.end()) {
+                media::AppVolume config = mAppVolumeConfigs[trackCreatorPackage];
+                track->setAppMute(config.muted);
+                track->setAppVolume(config.volume);
+            }
+
             // Connect secondary outputs. Failure on a secondary output must not imped the primary
             // Any secondary output setup failure will lead to a desync between the AP and AF until
             // the track is destroyed.
@@ -1977,6 +1986,61 @@ uint32_t AudioFlinger::getInputFramesLost(audio_io_handle_t ioHandle) const
         return recordThread->getInputFramesLost();
     }
     return 0;
+}
+
+
+status_t AudioFlinger::listAppVolumes(std::vector<media::AppVolume> *vols)
+{
+    std::set<media::AppVolume> volSet;
+    Mutex::Autolock _l(mLock);
+    for (size_t i = 0; i < mPlaybackThreads.size(); i++) {
+        sp<PlaybackThread> thread = mPlaybackThreads.valueAt(i);
+        thread->listAppVolumes(volSet);
+    }
+
+    vols->insert(vols->begin(), volSet.begin(), volSet.end());
+
+    return NO_ERROR;
+}
+
+status_t AudioFlinger::setAppVolume(const String8& packageName, const float value)
+{
+    Mutex::Autolock _l(mLock);
+    for (size_t i = 0; i < mPlaybackThreads.size(); i++) {
+        sp<PlaybackThread> t = mPlaybackThreads.valueAt(i);
+        t->setAppVolume(packageName, value);
+    }
+
+    if (mAppVolumeConfigs.find(packageName) == mAppVolumeConfigs.end()) {
+        media::AppVolume vol;
+        vol.packageName = packageName;
+        vol.volume = value;
+        vol.muted = false;
+        mAppVolumeConfigs[packageName] = vol;
+    } else {
+        mAppVolumeConfigs[packageName].volume = value;
+    }
+    return NO_ERROR;
+}
+
+status_t AudioFlinger::setAppMute(const String8& packageName, const bool value)
+{
+    Mutex::Autolock _l(mLock);
+    for (size_t i = 0; i < mPlaybackThreads.size(); i++) {
+        sp<PlaybackThread> t = mPlaybackThreads.valueAt(i);
+        t->setAppMute(packageName, value);
+    }
+
+    if (mAppVolumeConfigs.find(packageName) == mAppVolumeConfigs.end()) {
+        media::AppVolume vol;
+        vol.packageName = packageName;
+        vol.volume = 1.0f;
+        vol.muted = value;
+        mAppVolumeConfigs[packageName] = vol;
+    } else {
+        mAppVolumeConfigs[packageName].muted = value;
+    }
+    return NO_ERROR;
 }
 
 status_t AudioFlinger::setVoiceVolume(float value)
@@ -4549,7 +4613,9 @@ status_t AudioFlinger::onTransactWrapper(TransactionCode code,
         case TransactionCode::SYSTEM_READY:
         case TransactionCode::SET_AUDIO_HAL_PIDS:
         case TransactionCode::SET_VIBRATOR_INFOS:
-        case TransactionCode::UPDATE_SECONDARY_OUTPUTS: {
+        case TransactionCode::UPDATE_SECONDARY_OUTPUTS:
+        case TransactionCode::SET_APP_VOLUME:
+        case TransactionCode::SET_APP_MUTE: {
             if (!isServiceUid(IPCThreadState::self()->getCallingUid())) {
                 ALOGW("%s: transaction %d received from PID %d unauthorized UID %d",
                       __func__, code, IPCThreadState::self()->getCallingPid(),
