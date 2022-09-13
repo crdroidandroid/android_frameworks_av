@@ -628,7 +628,7 @@ private:
     {
     public:
 
-        EffectClient(AudioEffect *effect) : mEffect(effect){}
+        explicit EffectClient(const sp<AudioEffect>& effect) : mEffect(effect){}
 
         // IEffectClient
         binder::Status controlStatusChanged(bool controlGranted) override {
