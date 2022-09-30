@@ -1451,7 +1451,7 @@ sp<AMessage> CCodecConfig::getFormatForDomain(
                             "android.generic.%u+%u",
                             layering->m.layerCount - layering->m.bLayerCount,
                             layering->m.bLayerCount));
-                } else if (layering->m.bLayerCount) {
+                } else {
                     msg->setString(KEY_TEMPORAL_LAYERING, AStringPrintf(
                             "android.generic.%u", layering->m.layerCount));
                 }
