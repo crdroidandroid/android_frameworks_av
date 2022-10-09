@@ -1149,6 +1149,8 @@ status_t StagefrightRecorder::setParameter(
         }
     } else if (key == "log-session-id") {
         return setLogSessionId(value);
+    } else if (key == "set-title") {
+        return OK;
     } else {
         ALOGE("setParameter: failed to find key %s", key.c_str());
     }
