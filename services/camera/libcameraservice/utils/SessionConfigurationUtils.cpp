@@ -490,7 +490,7 @@ binder::Status createSurfaceFromGbp(
         return STATUS_ERROR(CameraService::ERROR_ILLEGAL_ARGUMENT, msg.string());
     }
     if (timestampBase < OutputConfiguration::TIMESTAMP_BASE_DEFAULT ||
-            timestampBase > OutputConfiguration::TIMESTAMP_BASE_MAX) {
+            timestampBase > OutputConfiguration::TIMESTAMP_BASE_CHOREOGRAPHER_SYNCED) {
         String8 msg = String8::format("Camera %s: invalid timestamp base %d",
                 logicalCameraId.string(), timestampBase);
         ALOGE("%s: %s", __FUNCTION__, msg.string());
