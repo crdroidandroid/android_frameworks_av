@@ -787,12 +787,10 @@ void returnAndRemovePendingOutputBuffers(bool useHalBufManager,
         SessionStatsBuilder& sessionStatsBuilder) {
     bool timestampIncreasing =
             !((request.zslCapture && request.stillCapture) || request.hasInputBuffer);
-    nsecs_t readoutTimestamp = request.resultExtras.hasReadoutTimestamp ?
-            request.resultExtras.readoutTimestamp : 0;
     returnOutputBuffers(useHalBufManager, listener,
             request.pendingOutputBuffers.array(),
             request.pendingOutputBuffers.size(),
-            request.shutterTimestamp, readoutTimestamp,
+            request.shutterTimestamp, request.shutterReadoutTimestamp,
             /*requested*/true, request.requestTimeNs, sessionStatsBuilder, timestampIncreasing,
             request.outputSurfaces, request.resultExtras,
             request.errorBufStrategy, request.transform);
@@ -854,10 +852,7 @@ void notifyShutter(CaptureOutputStates& states, const camera_shutter_msg_t &msg)
             }
 
             r.shutterTimestamp = msg.timestamp;
-            if (msg.readout_timestamp_valid) {
-                r.resultExtras.hasReadoutTimestamp = true;
-                r.resultExtras.readoutTimestamp = msg.readout_timestamp;
-            }
+            r.shutterReadoutTimestamp = msg.readout_timestamp;
             if (r.minExpectedDuration != states.minFrameDuration) {
                 for (size_t i = 0; i < states.outputStreams.size(); i++) {
                     auto outputStream = states.outputStreams[i];
