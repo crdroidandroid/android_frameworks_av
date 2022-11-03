@@ -1785,12 +1785,6 @@ void CCodec::start() {
         return;
     }
 
-    c2_status_t err = comp->start();
-    if (err != C2_OK) {
-        mCallback->onError(toStatusT(err, C2_OPERATION_Component_start),
-                           ACTION_CODE_FATAL);
-        return;
-    }
     sp<AMessage> inputFormat;
     sp<AMessage> outputFormat;
     status_t err2 = OK;
@@ -1814,6 +1808,13 @@ void CCodec::start() {
     err2 = mChannel->start(inputFormat, outputFormat, buffersBoundToCodec);
     if (err2 != OK) {
         mCallback->onError(err2, ACTION_CODE_FATAL);
+        return;
+    }
+
+    c2_status_t err = comp->start();
+    if (err != C2_OK) {
+        mCallback->onError(toStatusT(err, C2_OPERATION_Component_start),
+                           ACTION_CODE_FATAL);
         return;
     }
 
