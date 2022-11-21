@@ -275,7 +275,6 @@ C2SoftAacDec::C2SoftAacDec(
       mStreamInfo(nullptr),
       mSignalledError(false),
       mOutputPortDelay(kDefaultOutputPortDelay),
-      mOutputDelayRingBuffer(nullptr),
       mDeviceApiLevel(android_get_device_api_level()) {
 }
 
@@ -292,10 +291,9 @@ c2_status_t C2SoftAacDec::onStop() {
     drainDecoder();
     // reset the "configured" state
     mOutputDelayCompensated = 0;
-    mOutputDelayRingBufferWritePos = 0;
-    mOutputDelayRingBufferReadPos = 0;
-    mOutputDelayRingBufferFilled = 0;
-    mOutputDelayRingBuffer.reset();
+    mOutputDelayBuffers.clear();
+    mOutputDelayBufferPool.clear();
+    mOutputDelayBufferFilled = 0;
     mBuffersInfo.clear();
 
     status_t status = UNKNOWN_ERROR;
@@ -317,7 +315,6 @@ void C2SoftAacDec::onRelease() {
         aacDecoder_Close(mAACDecoder);
         mAACDecoder = nullptr;
     }
-    mOutputDelayRingBuffer.reset();
 }
 
 status_t C2SoftAacDec::initDecoder() {
@@ -332,11 +329,8 @@ status_t C2SoftAacDec::initDecoder() {
     }
 
     mOutputDelayCompensated = 0;
-    mOutputDelayRingBufferSize = 2048 * MAX_CHANNEL_COUNT * kNumDelayBlocksMax;
-    mOutputDelayRingBuffer.reset(new short[mOutputDelayRingBufferSize]);
-    mOutputDelayRingBufferWritePos = 0;
-    mOutputDelayRingBufferReadPos = 0;
-    mOutputDelayRingBufferFilled = 0;
+
+    mOutputDelayBufferFilled = 0;
 
     if (mAACDecoder == nullptr) {
         ALOGE("AAC decoder is null. TODO: Can not call aacDecoder_SetParam in the following code");
@@ -395,97 +389,53 @@ status_t C2SoftAacDec::initDecoder() {
     return status;
 }
 
-bool C2SoftAacDec::outputDelayRingBufferPutSamples(INT_PCM *samples, int32_t numSamples) {
+bool C2SoftAacDec::outputDelayBufferPutSamples(INT_PCM *samples, int32_t numSamples) {
     if (numSamples == 0) {
         return true;
     }
-    if (outputDelayRingBufferSpaceLeft() < numSamples) {
-        ALOGE("RING BUFFER WOULD OVERFLOW");
-        return false;
-    }
-    if (mOutputDelayRingBufferWritePos + numSamples <= mOutputDelayRingBufferSize
-            && (mOutputDelayRingBufferReadPos <= mOutputDelayRingBufferWritePos
-                    || mOutputDelayRingBufferReadPos > mOutputDelayRingBufferWritePos + numSamples)) {
-        // faster memcopy loop without checks, if the preconditions allow this
-        for (int32_t i = 0; i < numSamples; i++) {
-            mOutputDelayRingBuffer[mOutputDelayRingBufferWritePos++] = samples[i];
-        }
-
-        if (mOutputDelayRingBufferWritePos >= mOutputDelayRingBufferSize) {
-            mOutputDelayRingBufferWritePos -= mOutputDelayRingBufferSize;
-        }
+    if (mOutputDelayBufferPool.empty()) {
+        mOutputDelayBuffers.push_back(std::make_shared<DelayBuffer>(samples, numSamples));
     } else {
-        ALOGV("slow C2SoftAacDec::outputDelayRingBufferPutSamples()");
-
-        for (int32_t i = 0; i < numSamples; i++) {
-            mOutputDelayRingBuffer[mOutputDelayRingBufferWritePos] = samples[i];
-            mOutputDelayRingBufferWritePos++;
-            if (mOutputDelayRingBufferWritePos >= mOutputDelayRingBufferSize) {
-                mOutputDelayRingBufferWritePos -= mOutputDelayRingBufferSize;
-            }
-        }
+        mOutputDelayBufferPool.front()->putSamples(samples, numSamples);
+        mOutputDelayBuffers.push_back(mOutputDelayBufferPool.front());
+        mOutputDelayBufferPool.pop_front();
     }
-    mOutputDelayRingBufferFilled += numSamples;
+    mOutputDelayBufferFilled += numSamples;
     return true;
 }
 
-int32_t C2SoftAacDec::outputDelayRingBufferGetSamples(INT_PCM *samples, int32_t numSamples) {
-
-    if (numSamples > mOutputDelayRingBufferFilled) {
-        ALOGE("RING BUFFER WOULD UNDERRUN");
-        return -1;
-    }
-
-    if (mOutputDelayRingBufferReadPos + numSamples <= mOutputDelayRingBufferSize
-            && (mOutputDelayRingBufferWritePos < mOutputDelayRingBufferReadPos
-                    || mOutputDelayRingBufferWritePos >= mOutputDelayRingBufferReadPos + numSamples)) {
-        // faster memcopy loop without checks, if the preconditions allow this
-        if (samples != nullptr) {
-            for (int32_t i = 0; i < numSamples; i++) {
-                samples[i] = mOutputDelayRingBuffer[mOutputDelayRingBufferReadPos++];
-            }
-        } else {
-            mOutputDelayRingBufferReadPos += numSamples;
-        }
-        if (mOutputDelayRingBufferReadPos >= mOutputDelayRingBufferSize) {
-            mOutputDelayRingBufferReadPos -= mOutputDelayRingBufferSize;
-        }
-    } else {
-        ALOGV("slow C2SoftAacDec::outputDelayRingBufferGetSamples()");
-
-        for (int32_t i = 0; i < numSamples; i++) {
-            if (samples != nullptr) {
-                samples[i] = mOutputDelayRingBuffer[mOutputDelayRingBufferReadPos];
-            }
-            mOutputDelayRingBufferReadPos++;
-            if (mOutputDelayRingBufferReadPos >= mOutputDelayRingBufferSize) {
-                mOutputDelayRingBufferReadPos -= mOutputDelayRingBufferSize;
-            }
+int32_t C2SoftAacDec::outputDelayBufferGetSamples(INT_PCM *samples, int32_t numSamples) {
+    int32_t sampleToRead = numSamples;
+    while (!mOutputDelayBuffers.empty() && sampleToRead > 0) {
+        std::shared_ptr<DelayBuffer> delay = mOutputDelayBuffers.front();
+        int32_t nRead = delay->getSamples(
+                samples != nullptr ? &samples[numSamples - sampleToRead] : nullptr,
+                sampleToRead);
+        sampleToRead -= nRead;
+        if (delay->mNumFilledSamples == 0) {
+            mOutputDelayBuffers.pop_front();
+            mOutputDelayBufferPool.push_back(delay);
         }
     }
-    mOutputDelayRingBufferFilled -= numSamples;
-    return numSamples;
+    mOutputDelayBufferFilled -= (numSamples - sampleToRead);
+    return (numSamples - sampleToRead);
 }
 
-int32_t C2SoftAacDec::outputDelayRingBufferSamplesAvailable() {
-    return mOutputDelayRingBufferFilled;
+int32_t C2SoftAacDec::outputDelayBufferSamplesAvailable() {
+    return mOutputDelayBufferFilled;
 }
 
-int32_t C2SoftAacDec::outputDelayRingBufferSpaceLeft() {
-    return mOutputDelayRingBufferSize - outputDelayRingBufferSamplesAvailable();
-}
-
-void C2SoftAacDec::drainRingBuffer(
+void C2SoftAacDec::drainDelayBuffer(
         const std::unique_ptr<C2Work> &work,
         const std::shared_ptr<C2BlockPool> &pool,
         bool eos) {
-    while (!mBuffersInfo.empty() && outputDelayRingBufferSamplesAvailable()
+    while (!mBuffersInfo.empty() && outputDelayBufferSamplesAvailable()
             >= mStreamInfo->frameSize * mStreamInfo->numChannels) {
         Info &outInfo = mBuffersInfo.front();
         ALOGV("outInfo.frameIndex = %" PRIu64, outInfo.frameIndex);
         int samplesize __unused = mStreamInfo->numChannels * sizeof(int16_t);
 
-        int available = outputDelayRingBufferSamplesAvailable();
+        int available = outputDelayBufferSamplesAvailable();
         int numFrames = outInfo.decodedSizes.size();
         int numSamples = numFrames * (mStreamInfo->frameSize * mStreamInfo->numChannels);
         if (available < numSamples) {
@@ -497,7 +447,7 @@ void C2SoftAacDec::drainRingBuffer(
         }
         ALOGV("%d samples available (%d), or %d frames",
                 numSamples, available, numFrames);
-        ALOGV("getting %d from ringbuffer", numSamples);
+        ALOGV("getting %d from delay buffer", numSamples);
 
         std::shared_ptr<C2LinearBlock> block;
         std::function<void(const std::unique_ptr<C2Work>&)> fillWork =
@@ -530,7 +480,7 @@ void C2SoftAacDec::drainRingBuffer(
                 C2WriteView wView = block->map().get();
                 // TODO
                 INT_PCM *outBuffer = reinterpret_cast<INT_PCM *>(wView.data());
-                int32_t ns = outputDelayRingBufferGetSamples(outBuffer, numSamples);
+                int32_t ns = outputDelayBufferGetSamples(outBuffer, numSamples);
                 if (ns != numSamples) {
                     ALOGE("not a complete frame of samples available");
                     mSignalledError = true;
@@ -742,14 +692,6 @@ void C2SoftAacDec::process(
 
         AAC_DECODER_ERROR decoderErr;
         do {
-            if (outputDelayRingBufferSpaceLeft() <
-                    (mStreamInfo->frameSize * mStreamInfo->numChannels)) {
-                ALOGV("skipping decode: not enough space left in ringbuffer");
-                // discard buffer
-                size = 0;
-                break;
-            }
-
             int numConsumed = mStreamInfo->numTotalBytes;
             decoderErr = aacDecoder_DecodeFrame(mAACDecoder,
                                        tmpOutBuffer,
@@ -778,7 +720,7 @@ void C2SoftAacDec::process(
                 mStreamInfo->frameSize * sizeof(int16_t) * mStreamInfo->numChannels;
 
             if (decoderErr == AAC_DEC_OK) {
-                if (!outputDelayRingBufferPutSamples(tmpOutBuffer,
+                if (!outputDelayBufferPutSamples(tmpOutBuffer,
                         mStreamInfo->frameSize * mStreamInfo->numChannels)) {
                     mSignalledError = true;
                     work->result = C2_CORRUPTED;
@@ -789,7 +731,7 @@ void C2SoftAacDec::process(
 
                 memset(tmpOutBuffer, 0, numOutBytes); // TODO: check for overflow
 
-                if (!outputDelayRingBufferPutSamples(tmpOutBuffer,
+                if (!outputDelayBufferPutSamples(tmpOutBuffer,
                         mStreamInfo->frameSize * mStreamInfo->numChannels)) {
                     mSignalledError = true;
                     work->result = C2_CORRUPTED;
@@ -958,11 +900,11 @@ void C2SoftAacDec::process(
     if (!eos && mOutputDelayCompensated < outputDelay) {
         // discard outputDelay at the beginning
         int32_t toCompensate = outputDelay - mOutputDelayCompensated;
-        int32_t discard = outputDelayRingBufferSamplesAvailable();
+        int32_t discard = outputDelayBufferSamplesAvailable();
         if (discard > toCompensate) {
             discard = toCompensate;
         }
-        int32_t discarded = outputDelayRingBufferGetSamples(nullptr, discard);
+        int32_t discarded = outputDelayBufferGetSamples(nullptr, discard);
         mOutputDelayCompensated += discarded;
         return;
     }
@@ -970,7 +912,7 @@ void C2SoftAacDec::process(
     if (eos) {
         drainInternal(DRAIN_COMPONENT_WITH_EOS, pool, work);
     } else {
-        drainRingBuffer(work, pool, false /* not EOS */);
+        drainDelayBuffer(work, pool, false /* not EOS */);
     }
 }
 
@@ -990,7 +932,7 @@ c2_status_t C2SoftAacDec::drainInternal(
     bool eos = (drainMode == DRAIN_COMPONENT_WITH_EOS);
 
     drainDecoder();
-    drainRingBuffer(work, pool, eos);
+    drainDelayBuffer(work, pool, eos);
 
     if (eos) {
         auto fillEmptyWork = [](const std::unique_ptr<C2Work> &work) {
@@ -1022,18 +964,11 @@ c2_status_t C2SoftAacDec::onFlush_sm() {
     drainDecoder();
     mBuffersInfo.clear();
 
-    int avail;
-    while ((avail = outputDelayRingBufferSamplesAvailable()) > 0) {
-        if (avail > mStreamInfo->frameSize * mStreamInfo->numChannels) {
-            avail = mStreamInfo->frameSize * mStreamInfo->numChannels;
-        }
-        int32_t ns = outputDelayRingBufferGetSamples(nullptr, avail);
-        if (ns != avail) {
-            ALOGW("not a complete frame of samples available");
-            break;
-        }
+    while (!mOutputDelayBuffers.empty()) {
+        mOutputDelayBufferPool.push_back(mOutputDelayBuffers.front());
+        mOutputDelayBuffers.pop_front();
     }
-    mOutputDelayRingBufferReadPos = mOutputDelayRingBufferWritePos;
+    mOutputDelayBufferFilled = 0;
 
     return C2_OK;
 }
@@ -1061,7 +996,7 @@ void C2SoftAacDec::drainDecoder() {
         if (tmpOutBufferSamples > mOutputDelayCompensated) {
             tmpOutBufferSamples = mOutputDelayCompensated;
         }
-        outputDelayRingBufferPutSamples(tmpOutBuffer, tmpOutBufferSamples);
+        outputDelayBufferPutSamples(tmpOutBuffer, tmpOutBufferSamples);
 
         mOutputDelayCompensated -= tmpOutBufferSamples;
     }
