@@ -79,7 +79,7 @@ private:
     bool isConfigured() const;
     void drainDecoder();
 
-    void drainRingBuffer(
+    void drainDelayBuffer(
             const std::unique_ptr<C2Work> &work,
             const std::shared_ptr<C2BlockPool> &pool,
             bool eos);
@@ -88,20 +88,64 @@ private:
             const std::shared_ptr<C2BlockPool> &pool,
             const std::unique_ptr<C2Work> &work);
 
+    struct DelayBuffer {
+        int32_t mNumFilledSamples;
+        int32_t mReadOffset;
+        int32_t mSampleCapacity;
+        INT_PCM *mBuffer;
+        explicit DelayBuffer(INT_PCM *samples, int32_t numSamples)
+            : mNumFilledSamples(numSamples),
+            mReadOffset(0),
+            mSampleCapacity(numSamples),
+            mBuffer(nullptr) {
+            mBuffer = new INT_PCM[numSamples];
+            if (samples != nullptr) {
+                memcpy(mBuffer, samples, numSamples * sizeof(INT_PCM));
+            }
+        }
+        ~DelayBuffer() {
+            delete[] mBuffer;
+        }
+
+        void putSamples(INT_PCM *samples, int32_t numSamples) {
+            if (mSampleCapacity < numSamples) {
+                delete[] mBuffer;
+                mBuffer = new INT_PCM[numSamples];
+                mSampleCapacity = numSamples;
+            }
+            if (samples != nullptr) {
+                memcpy(mBuffer, samples, numSamples * sizeof(INT_PCM));
+            }
+            mNumFilledSamples = numSamples;
+            mReadOffset = 0;
+        }
+
+        int32_t getSamples(INT_PCM *samples, int32_t numSamples) {
+            int32_t numRead = numSamples;
+            if (mNumFilledSamples < numSamples) {
+                numRead = mNumFilledSamples;
+            }
+            if (samples != nullptr) {
+                memcpy(samples, &mBuffer[mReadOffset], numRead * sizeof(INT_PCM));
+            }
+            mNumFilledSamples -= numRead;
+            mReadOffset += numRead;
+            return numRead;
+        }
+    };
+
+
 //      delay compensation
     bool mEndOfInput;
     bool mEndOfOutput;
     int32_t mOutputDelayCompensated;
-    int32_t mOutputDelayRingBufferSize;
-    std::unique_ptr<short[]> mOutputDelayRingBuffer;
-    int32_t mOutputDelayRingBufferWritePos;
-    int32_t mOutputDelayRingBufferReadPos;
-    int32_t mOutputDelayRingBufferFilled;
+    std::list<std::shared_ptr<DelayBuffer>> mOutputDelayBuffers;
+    std::list<std::shared_ptr<DelayBuffer>> mOutputDelayBufferPool;
+    int32_t mOutputDelayBufferFilled;
     int mDeviceApiLevel;
-    bool outputDelayRingBufferPutSamples(INT_PCM *samples, int numSamples);
-    int32_t outputDelayRingBufferGetSamples(INT_PCM *samples, int numSamples);
-    int32_t outputDelayRingBufferSamplesAvailable();
-    int32_t outputDelayRingBufferSpaceLeft();
+    bool outputDelayBufferPutSamples(INT_PCM *samples, int numSamples);
+    int32_t outputDelayBufferGetSamples(INT_PCM *samples, int numSamples);
+    int32_t outputDelayBufferSamplesAvailable();
     uint32_t maskFromCount(uint32_t channelCount);
 
     C2_DO_NOT_COPY(C2SoftAacDec);
