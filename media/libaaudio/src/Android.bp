@@ -84,6 +84,10 @@ cc_library {
     export_header_lib_headers: ["libaaudio_headers"],
     version_script: "libaaudio.map.txt",
 
+    lto: {
+        never: true,
+    },
+
     srcs: [
         "core/AAudioAudio.cpp",
     ],
