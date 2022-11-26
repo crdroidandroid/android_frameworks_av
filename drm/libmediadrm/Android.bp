@@ -90,6 +90,9 @@ cc_library {
         "-Werror",
         "-Wall",
     ],
+    lto: {
+        never: true,
+    },
 }
 
 // This is the version of the drm metrics configured for protobuf lite.
