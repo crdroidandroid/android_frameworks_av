@@ -220,6 +220,7 @@ cc_library_shared {
         "libEGL",
         "libGLESv1_CM",
         "libGLESv2",
+        "libvulkan",
         "libgui",
         "liblog",
         "libprocessgroup",
