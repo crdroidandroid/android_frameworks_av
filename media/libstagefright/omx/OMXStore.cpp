@@ -18,6 +18,7 @@
 #define LOG_TAG "OMXStore"
 #include <android-base/properties.h>
 #include <utils/Log.h>
+#include <cutils/properties.h>
 
 #include <media/stagefright/omx/OMXStore.h>
 #include <media/stagefright/omx/SoftOMXPlugin.h>
@@ -63,6 +64,21 @@ OMXStore::~OMXStore() {
 
 void OMXStore::addVendorPlugin() {
     addPlugin("libstagefrighthw.so");
+
+    // MIUI ADD: DOLBY_ENABLE
+    // NOTE: We do not use FeatureManager::isFeatureEnable here because we can not add shared lib
+    // libmediautils to this module due to this module is vendor_avaiable and vndk is set as true
+    // but libmediautils is not.
+    bool isDolbyEnable = property_get_bool("ro.vendor.audio.dolby.dax.support", false);
+    if (isDolbyEnable) {
+        // !IMPORTANT:
+        // Dolby OMX plugin manages all the Dolby codec components. Customer needs to manage Dolby
+        // codec components in its own OMX plugin (e.g. above libstagefrighthw.so) then removes
+        // all Dolby's modifications in this file to pass Goolge VTS.
+        ALOGD("%s(): Loading Dolby OMX plugin...", __FUNCTION__);
+        addPlugin("libstagefrightdolby.so");
+    }
+    // MIUI END
 }
 
 void OMXStore::addPlatformPlugin() {
