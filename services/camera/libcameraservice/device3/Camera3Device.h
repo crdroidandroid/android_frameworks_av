@@ -1013,7 +1013,7 @@ class Camera3Device :
 
         wp<NotificationListener> mListener;
 
-        const String8&     mId;       // The camera ID
+        const String8      mId;       // The camera ID
         int                mStatusId; // The RequestThread's component ID for
                                       // status tracking
 
