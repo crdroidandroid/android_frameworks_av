@@ -77,8 +77,8 @@ namespace /* unnamed */ {
 bool native_handle_is_invalid(const native_handle_t *const handle) {
     // perform basic validation of a native handle
     if (handle == nullptr) {
-        // null handle is considered valid
-        return false;
+        // null handle is considered invalid
+        return true;
     }
     return ((size_t)handle->version != sizeof(native_handle_t) ||
             handle->numFds < 0 ||
