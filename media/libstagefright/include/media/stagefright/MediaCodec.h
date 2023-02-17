@@ -334,6 +334,7 @@ private:
         kWhatSetNotification                = 'setN',
         kWhatDrmReleaseCrypto               = 'rDrm',
         kWhatCheckBatteryStats              = 'chkB',
+        kWhatGetMetrics                     = 'getM',
     };
 
     enum {
@@ -379,6 +380,7 @@ private:
     sp<Surface> mSurface;
     SoftwareRenderer *mSoftRenderer;
 
+    Mutex mMetricsLock;
     mediametrics_handle_t mMetricsHandle = 0;
     nsecs_t mLifetimeStartNs = 0;
     void initMediametrics();
@@ -386,6 +388,8 @@ private:
     void flushMediametrics();
     void updateEphemeralMediametrics(mediametrics_handle_t item);
     void updateLowLatency(const sp<AMessage> &msg);
+    void onGetMetrics(const sp<AMessage>& msg);
+
 
     sp<AMessage> mOutputFormat;
     sp<AMessage> mInputFormat;
