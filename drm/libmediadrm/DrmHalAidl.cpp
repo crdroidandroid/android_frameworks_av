@@ -457,7 +457,7 @@ status_t DrmHalAidl::isCryptoSchemeSupported(const uint8_t uuid[16], const Strin
 
 status_t DrmHalAidl::createPlugin(const uint8_t uuid[16], const String8& appPackageName) {
     Mutex::Autolock autoLock(mLock);
-
+    if (mInitCheck == ERROR_UNSUPPORTED) return mInitCheck;
     Uuid uuidAidl = DrmUtils::toAidlUuid(uuid);
     std::string appPackageNameAidl = toStdString(appPackageName);
     std::shared_ptr<IDrmPluginAidl> pluginAidl;
@@ -1212,7 +1212,7 @@ void DrmHalAidl::cleanup() {
     closeOpenSessions();
 
     Mutex::Autolock autoLock(mLock);
-    reportFrameworkMetrics(reportPluginMetrics());
+    if (mInitCheck == OK) reportFrameworkMetrics(reportPluginMetrics());
 
     setListener(NULL);
     mInitCheck = NO_INIT;
