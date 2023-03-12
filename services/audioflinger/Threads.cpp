@@ -3327,7 +3327,7 @@ bool AudioFlinger::PlaybackThread::isValidSyncEvent(const sp<SyncEvent>& event) 
 }
 
 void AudioFlinger::PlaybackThread::threadLoop_removeTracks(
-        const Vector< sp<Track> >& tracksToRemove)
+        [[maybe_unused]] const Vector< sp<Track> >& tracksToRemove)
 {
     // Miscellaneous track cleanup when removed from the active list,
     // called without Thread lock but synchronized with threadLoop processing.
@@ -3338,8 +3338,6 @@ void AudioFlinger::PlaybackThread::threadLoop_removeTracks(
             addBatteryData(IMediaPlayerService::kBatteryDataAudioFlingerStop);
         }
     }
-#else
-    (void)tracksToRemove; // suppress unused warning
 #endif
 }
 
@@ -5866,7 +5864,7 @@ AudioFlinger::PlaybackThread::mixer_state AudioFlinger::MixerThread::prepareTrac
     }
 
     // Push the new FastMixer state if necessary
-    bool pauseAudioWatchdog = false;
+    [[maybe_unused]] bool pauseAudioWatchdog = false;
     if (didModify) {
         state->mFastTracksGen++;
         // if the fast mixer was active, but now there are no fast tracks, then put it in cold idle
@@ -7593,7 +7591,7 @@ AudioFlinger::RecordThread::RecordThread(const sp<AudioFlinger>& audioFlinger,
     size_t numCounterOffers = 0;
     const NBAIO_Format offers[1] = {Format_from_SR_C(mSampleRate, mChannelCount, mFormat)};
 #if !LOG_NDEBUG
-    ssize_t index =
+    [[maybe_unused]] ssize_t index =
 #else
     (void)
 #endif
@@ -7643,7 +7641,7 @@ AudioFlinger::RecordThread::RecordThread(const sp<AudioFlinger>& audioFlinger,
         Pipe *pipe = new Pipe(pipeFramesP2, format, pipeBuffer);
         const NBAIO_Format offers[1] = {format};
         size_t numCounterOffers = 0;
-        ssize_t index = pipe->negotiate(offers, 1, NULL, numCounterOffers);
+        [[maybe_unused]] ssize_t index = pipe->negotiate(offers, 1, NULL, numCounterOffers);
         ALOG_ASSERT(index == 0);
         mPipeSink = pipe;
         PipeReader *pipeReader = new PipeReader(*pipe);
@@ -9099,7 +9097,8 @@ bool AudioFlinger::RecordThread::checkForNewParameter_l(const String8& keyValueP
     audio_format_t reqFormat = mFormat;
     uint32_t samplingRate = mSampleRate;
     // TODO this may change if we want to support capture from HDMI PCM multi channel (e.g on TVs).
-    audio_channel_mask_t channelMask = audio_channel_in_mask_from_count(mChannelCount);
+    [[maybe_unused]] audio_channel_mask_t channelMask =
+                                audio_channel_in_mask_from_count(mChannelCount);
 
     AudioParameter param = AudioParameter(keyValuePair);
     int value;
