@@ -474,6 +474,7 @@ status_t LiveSession::getStreamFormatMeta(StreamType stream, sp<MetaData> *meta)
 
     sp<AnotherPacketSource> packetSource = mPacketSources.valueFor(stream);
 
+    Mutex::Autolock autoLock(packetSource->getFormatLock());
     *meta = packetSource->getFormat();
 
     if (*meta == NULL) {

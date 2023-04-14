@@ -1832,11 +1832,14 @@ status_t PlaylistFetcher::extractAndQueueAccessUnitsFromTs(const sp<ABuffer> &bu
             continue;
         }
 
-        const char *mime;
-        sp<MetaData> format  = source->getFormat();
-        bool isAvc = format != NULL && format->findCString(kKeyMIMEType, &mime)
+        bool isAvc;
+        {
+            const char *mime;
+            Mutex::Autolock autoLock(source->getFormatLock());
+            sp<MetaData> format = source->getFormat();
+            isAvc = format != NULL && format->findCString(kKeyMIMEType, &mime)
                 && !strcasecmp(mime, MEDIA_MIMETYPE_VIDEO_AVC);
-
+        }
         sp<ABuffer> accessUnit;
         status_t finalResult;
         while (source->hasBufferAvailable(&finalResult)

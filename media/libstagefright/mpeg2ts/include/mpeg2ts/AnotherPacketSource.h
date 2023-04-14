@@ -84,6 +84,7 @@ struct AnotherPacketSource : public MediaSource {
 
     void trimBuffersAfterMeta(const sp<AMessage> &meta);
     sp<AMessage> trimBuffersBeforeMeta(const sp<AMessage> &meta);
+    Mutex& getFormatLock() { return mFormatLock; }
 
 protected:
     virtual ~AnotherPacketSource();
@@ -109,6 +110,7 @@ private:
     List<DiscontinuitySegment> mDiscontinuitySegments;
 
     Mutex mLock;
+    Mutex mFormatLock;
     Condition mCondition;
 
     bool mIsAudio;
