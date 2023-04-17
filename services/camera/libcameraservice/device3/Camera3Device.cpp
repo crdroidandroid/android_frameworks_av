@@ -62,6 +62,9 @@
 #ifdef USES_OPLUS_CAMERA
 #define TAG_NAME "com.oplus.packageName"
 #endif
+#ifdef USES_OPPO_CAMERA
+#define TAG_NAME "com.oppo.packageName"
+#endif
 #ifdef USES_NOTHING_CAMERA
 #define TAG_NAME "com.nothing.device.package_name"
 #endif
