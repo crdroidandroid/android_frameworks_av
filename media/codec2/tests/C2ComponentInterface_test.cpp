@@ -683,6 +683,8 @@ TEST_F(C2CompIntfTest, C2V4L2CodecIntf) {
     const char* dlsym_error = dlerror();
     if (dlsym_error) {
         printf("Cannot load symbol create: %s.\n", dlsym_error);
+        dlclose(compLib);
+        compLib = NULL;
         FAIL();
         return;
     }
@@ -692,6 +694,8 @@ TEST_F(C2CompIntfTest, C2V4L2CodecIntf) {
     dlsym_error = dlerror();
     if (dlsym_error) {
         printf("Cannot load symbol destroy: %s.\n", dlsym_error);
+        dlclose(compLib);
+        compLib = NULL;
         FAIL();
         return;
     }
