@@ -2015,7 +2015,8 @@ static bool connectFormatShaper() {
         // fall back to the system partition, if present.
         //
         if (sShaperOps == NULL) {
-
+            if (libHandle != NULL)
+                dlclose(libHandle);
             libHandle = dlopen(libraryName.c_str(), RTLD_NOW|RTLD_NODELETE);
 
             if (libHandle != NULL) {
