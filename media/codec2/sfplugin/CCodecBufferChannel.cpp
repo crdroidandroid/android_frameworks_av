@@ -74,7 +74,7 @@ using DrmBufferType = hardware::drm::V1_0::BufferType;
 
 namespace {
 
-constexpr size_t kSmoothnessFactor = 4;
+constexpr size_t kSmoothnessFactor = 2;
 constexpr size_t kRenderingDepth = 3;
 
 // This is for keeping IGBP's buffer dropping logic in legacy mode other
