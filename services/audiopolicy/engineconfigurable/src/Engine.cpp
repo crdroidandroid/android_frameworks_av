@@ -93,7 +93,7 @@ status_t Engine::initCheck()
 template <typename Key>
 Element<Key> *Engine::getFromCollection(const Key &key) const
 {
-    const Collection<Key> collection = getCollection<Key>();
+    const Collection<Key> &collection = getCollection<Key>();
     return collection.get(key);
 }
 
