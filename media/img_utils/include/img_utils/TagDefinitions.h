@@ -181,6 +181,8 @@ enum {
     TAG_EXPOSURETIME = 0x829Au,
     TAG_ISOSPEEDRATINGS = 0x8827u,
     TAG_FOCALLENGTH = 0x920Au,
+    TAG_FOCALLLENGTHIN35MMFILM = 0xA405u,
+    TAG_XIAOMI_PRODUCT = 0x9A00u,
     TAG_FNUMBER = 0x829Du,
     TAG_GPSINFO = 0x8825u,
     TAG_GPSVERSIONID = 0x0u,
@@ -278,6 +280,14 @@ const TagDefinition_t TIFF_EP_TAG_DEFINITIONS[] =  {
         RATIONAL,
         IFD_0,
         0,
+        UNDEFINED_ENDIAN
+    },
+    { // FocalLengthIn35mmFilm
+        "FocalLengthIn35mmFilm",
+        0xA405u,
+        SHORT,
+        IFD_0,
+        1,
         UNDEFINED_ENDIAN
     },
     { // FNumber
@@ -1394,6 +1404,14 @@ const TagDefinition_t DNG_TAG_DEFINITIONS[] = {
         DOUBLE,
         PREVIEW_IFD,
         1,
+        UNDEFINED_ENDIAN
+    },
+    { // Product
+        "Product",
+        0x9A00u,
+        ASCII,
+        IFD_0,
+        0,
         UNDEFINED_ENDIAN
     },
 };
