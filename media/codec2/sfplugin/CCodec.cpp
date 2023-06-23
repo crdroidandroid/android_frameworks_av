@@ -2168,6 +2168,8 @@ void CCodec::signalResume() {
             // and the buffers are send to the client as soon as the codec
             // releases them
             ALOGI("Resuming with all input buffers still with codec");
+        } else if (err == WOULD_BLOCK) {
+             ALOGI("Resuming with input buffers not a fatal error");
         } else {
             ALOGE("Resume request for Input Buffers failed");
             mCallback->onError(err, ACTION_CODE_FATAL);
@@ -2194,7 +2196,9 @@ void CCodec::signalResume() {
         state->set(RUNNING);
     }
 
-    mChannel->requestInitialInputBuffers(std::move(clientInputBuffers));
+     if (err != WOULD_BLOCK) {
+        mChannel->requestInitialInputBuffers(std::move(clientInputBuffers));
+     }
 }
 
 void CCodec::signalSetParameters(const sp<AMessage> &msg) {
