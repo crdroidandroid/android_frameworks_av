@@ -136,6 +136,7 @@ NuPlayer::Renderer::Renderer(
       mMediaClock(mediaClock),
       mPlaybackSettings(AUDIO_PLAYBACK_RATE_DEFAULT),
       mAudioFirstAnchorTimeMediaUs(-1),
+      mAudioAnchorTimeMediaUs(-1),
       mAnchorTimeMediaUs(-1),
       mAnchorNumFramesWritten(-1),
       mVideoLateByUs(0LL),
@@ -437,6 +438,7 @@ void NuPlayer::Renderer::setAudioFirstAnchorTimeIfNeeded_l(int64_t mediaUs) {
 // Called on renderer looper.
 void NuPlayer::Renderer::clearAnchorTime() {
     mMediaClock->clearAnchor();
+    mAudioAnchorTimeMediaUs = -1;
     mAnchorTimeMediaUs = -1;
     mAnchorNumFramesWritten = -1;
 }
@@ -1265,7 +1267,7 @@ void NuPlayer::Renderer::onNewAudioMediaTime(int64_t mediaTimeUs) {
     Mutex::Autolock autoLock(mLock);
     // TRICKY: vorbis decoder generates multiple frames with the same
     // timestamp, so only update on the first frame with a given timestamp
-    if (mediaTimeUs == mAnchorTimeMediaUs) {
+    if (mediaTimeUs == mAudioAnchorTimeMediaUs) {
         return;
     }
     setAudioFirstAnchorTimeIfNeeded_l(mediaTimeUs);
@@ -1303,6 +1305,7 @@ void NuPlayer::Renderer::onNewAudioMediaTime(int64_t mediaTimeUs) {
         }
     }
     mAnchorNumFramesWritten = mNumFramesWritten;
+    mAudioAnchorTimeMediaUs = mediaTimeUs;
     mAnchorTimeMediaUs = mediaTimeUs;
 }
 
