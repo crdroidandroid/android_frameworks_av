@@ -49,16 +49,20 @@
 #include <gui/SurfaceComposerClient.h>
 #include <gui/ISurfaceComposer.h>
 #include <media/MediaCodecBuffer.h>
+#include <media/MediaCodecInfo.h>
 #include <media/NdkMediaCodec.h>
 #include <media/NdkMediaFormatPriv.h>
 #include <media/NdkMediaMuxer.h>
 #include <media/openmax/OMX_IVCommon.h>
 #include <media/stagefright/MediaCodec.h>
 #include <media/stagefright/MediaCodecConstants.h>
+#include <media/stagefright/MediaCodecList.h>
+#include <media/stagefright/MediaCodecListOverrides.h>
 #include <media/stagefright/MediaErrors.h>
 #include <media/stagefright/PersistentSurface.h>
 #include <media/stagefright/foundation/ABuffer.h>
 #include <media/stagefright/foundation/AMessage.h>
+#include <media/stagefright/foundation/AUtils.h>
 #include <mediadrm/ICrypto.h>
 #include <ui/DisplayMode.h>
 #include <ui/DisplayState.h>
@@ -75,9 +79,12 @@ using android::ui::DisplayMode;
 using android::FrameOutput;
 using android::IBinder;
 using android::IGraphicBufferProducer;
+using android::IMediaCodecList;
 using android::ISurfaceComposer;
 using android::MediaCodec;
 using android::MediaCodecBuffer;
+using android::MediaCodecList;
+using android::MediaCodecInfo;
 using android::Overlay;
 using android::PersistentSurface;
 using android::PhysicalDisplayId;
@@ -198,7 +205,6 @@ static status_t prepareEncoder(float displayFps, sp<MediaCodec>* pCodec,
     format->setString(KEY_MIME, kMimeTypeAvc);
     format->setInt32(KEY_COLOR_FORMAT, OMX_COLOR_FormatAndroidOpaque);
     format->setInt32(KEY_BIT_RATE, gBitRate);
-    format->setFloat(KEY_FRAME_RATE, displayFps);
     format->setInt32(KEY_I_FRAME_INTERVAL, 10);
     format->setInt32(KEY_MAX_B_FRAMES, gBframes);
     if (gBframes > 0) {
@@ -226,6 +232,27 @@ static status_t prepareEncoder(float displayFps, sp<MediaCodec>* pCodec,
             return UNKNOWN_ERROR;
         }
     }
+
+    // set frame-rate based on codec capability
+    const sp<IMediaCodecList> mcl = MediaCodecList::getInstance();
+    AString codecName;
+    codec->getName(&codecName);
+    ssize_t codecIdx = mcl->findCodecByName(codecName.c_str());
+    sp<MediaCodecInfo> info = mcl->getCodecInfo(codecIdx);
+    sp<MediaCodecInfo::Capabilities> capabilities = info->getCapabilitiesFor(kMimeTypeAvc);
+    const sp<AMessage> &details = capabilities->getDetails();
+    std::string perfPointKey = "performance-point-" + std::to_string(gVideoWidth) + "x" +
+       std::to_string(gVideoHeight) + "-range";
+    AString minPerfPoint, maxPerfPoint;
+    AString perfPoint;
+    if (details->findString(perfPointKey.c_str(), &perfPoint)
+        && splitString(perfPoint, "-", &minPerfPoint, &maxPerfPoint)) {
+        int perfPointValue = strtol(maxPerfPoint.c_str(), NULL, 10);
+        if (perfPointValue < displayFps) {
+            displayFps = perfPointValue;
+        }
+    }
+    format->setFloat(KEY_FRAME_RATE, displayFps);
 
     err = codec->configure(format, NULL, NULL,
             MediaCodec::CONFIGURE_FLAG_ENCODE);
