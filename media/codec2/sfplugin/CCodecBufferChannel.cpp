@@ -84,7 +84,7 @@ const static size_t kDequeueTimeoutNs = 0;
 // If app goes into background, decoding paused. we have WA logic in HAL to sleep some actions.
 // This value is to monitor if decoding is paused then we can signal a new empty work to HAL
 // after app resume to foreground to notify HAL something
-const static uint64_t kPipelinePausedTimeoutMs = 500;
+const static uint64_t kPipelinePausedTimeoutMs = 1000;
 
 }  // namespace
 
