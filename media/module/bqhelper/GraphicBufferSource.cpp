@@ -1220,6 +1220,24 @@ status_t GraphicBufferSource::configure(
     return OK;
 }
 
+// Legacy compat
+status_t GraphicBufferSource::configure(
+        const sp<ComponentWrapper>& component,
+        int32_t dataSpace,
+        int32_t bufferCount,
+        uint32_t frameWidth,
+        uint32_t frameHeight,
+        uint32_t consumerUsage) {
+    
+    return GraphicBufferSource::configure(
+        component,
+        dataSpace,
+        bufferCount,
+        frameWidth,
+        frameHeight,
+        (uint64_t) consumerUsage);
+}
+
 status_t GraphicBufferSource::setSuspend(bool suspend, int64_t suspendStartTimeUs) {
     ALOGV("setSuspend=%d at time %lld us", suspend, (long long)suspendStartTimeUs);
 
