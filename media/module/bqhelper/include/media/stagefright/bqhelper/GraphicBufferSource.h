@@ -131,6 +131,15 @@ public:
         uint32_t frameHeight,
         uint64_t consumerUsage);
 
+    // Legacy compat
+    status_t configure(
+        const sp<ComponentWrapper> &component,
+        int32_t dataSpace,
+        int32_t bufferCount,
+        uint32_t frameWidth,
+        uint32_t frameHeight,
+        uint32_t consumerUsage);
+
     // This is called after the last input frame has been submitted or buffer
     // timestamp is greater or equal than stopTimeUs. We need to submit an empty
     // buffer with the EOS flag set.  If we don't have a codec buffer ready,
