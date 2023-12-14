@@ -41,14 +41,14 @@ void AHandler::deliverMessage(const sp<AMessage> &msg) {
 }
 
 void AHandler::setDeliveryStatus(bool delivering, uint32_t what, int64_t startUs) {
-    AutoMutex autoLock(mLock);
+    //AutoMutex autoLock(mLock);
     mDeliveringMessage = delivering;
     mCurrentMessageWhat = what;
     mCurrentMessageStartTimeUs = startUs;
 }
 
 void AHandler::getDeliveryStatus(bool& delivering, uint32_t& what, int64_t& durationUs) {
-    AutoMutex autoLock(mLock);
+    //AutoMutex autoLock(mLock);
     delivering = mDeliveringMessage;
     what = mCurrentMessageWhat;
     durationUs = mCurrentMessageStartTimeUs == 0 ?
