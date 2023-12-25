@@ -100,10 +100,6 @@ cc_defaults {
         "-Werror",
     ],
 
-    lto: {
-        never: true,
-    },
-
     ldflags: ["-Wl,-Bsymbolic"],
 
     min_sdk_version: "29",
