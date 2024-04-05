@@ -4220,7 +4220,7 @@ status_t CameraService::BasicClient::startCameraOps() {
     sCameraService->updateOpenCloseStatus(mCameraIdStr, true/*open*/, mClientPackageName);
 
 #if defined (CAMERA_NEEDS_CLIENT_INFO_LIB) || defined (CAMERA_NEEDS_CLIENT_INFO_LIB_OPLUS)
-    gVendorCameraProviderService->setPackageName(String8(mClientPackageName).string());
+    gVendorCameraProviderService->setPackageName(mClientPackageName.c_str());
 #endif
 
     return OK;
