@@ -139,6 +139,7 @@ cc_library {
         "common/CameraDeviceBase.cpp",
         "common/CameraOfflineSessionBase.cpp",
         "common/CameraProviderManager.cpp",
+        "common/CameraProviderExtension.cpp",
         "common/FrameProcessorBase.cpp",
         "common/hidl/HidlProviderInfo.cpp",
         "common/aidl/AidlProviderInfo.cpp",
@@ -244,6 +245,9 @@ cc_library {
     }) + select(soong_config_variable("camera", "needs_client_info_lib_oplus"), {
         "true": ["-DTARGET_CAMERA_NEEDS_CLIENT_INFO_LIB_OPLUS"],
         default: [],
+    }) + select(soong_config_variable("camera", "libcameraservice_ext_lib"), {
+        any @ flag_val: ["-DTARGET_CAMERA_SERVICE_EXT_LIB=" + flag_val],
+        default: [],
     }),
 }
 
@@ -307,4 +311,12 @@ cc_library_static {
         "-Werror",
         "-Wno-ignored-qualifiers",
     ],
+}
+
+cc_library_static {
+    name: "libcameraservice_ext_lib",
+    srcs: [
+        "common/CameraProviderExtension.cpp",
+    ],
+    export_include_dirs: ["."],
 }
