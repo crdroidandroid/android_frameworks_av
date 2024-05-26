@@ -55,6 +55,8 @@
 #include "device3/ZoomRatioMapper.h"
 #include "utils/Utils.h"
 
+#include "common/CameraProviderExtension.h"
+
 namespace android {
 
 using namespace ::android::hardware::camera;
@@ -554,7 +556,15 @@ status_t CameraProviderManager::getTorchStrengthLevel(const std::string &id,
     auto deviceInfo = findDeviceInfoLocked(id);
     if (deviceInfo == nullptr) return NAME_NOT_FOUND;
 
-    return deviceInfo->getTorchStrengthLevel(torchStrength);
+    // Use the extension only for the camera that has flash unit
+    // Otherwise fallback to the default impl.
+    if (deviceInfo->hasFlashUnit() && supportsTorchStrengthControlExt()) {
+        int32_t strength = getTorchStrengthLevelExt();
+        *torchStrength = strength;
+        return OK;
+    } else {
+        return deviceInfo->getTorchStrengthLevel(torchStrength);
+    }
 }
 
 status_t CameraProviderManager::turnOnTorchWithStrengthLevel(const std::string &id,
@@ -564,7 +574,16 @@ status_t CameraProviderManager::turnOnTorchWithStrengthLevel(const std::string &
     auto deviceInfo = findDeviceInfoLocked(id);
     if (deviceInfo == nullptr) return NAME_NOT_FOUND;
 
-    return deviceInfo->turnOnTorchWithStrengthLevel(torchStrength);
+    // Use the extension only for the camera that has flash unit
+    // Otherwise fallback to the default impl.
+    if (deviceInfo->hasFlashUnit() && supportsTorchStrengthControlExt()) {
+        // Turn on the torch if level > 0.
+        deviceInfo->setTorchMode(torchStrength > 0);
+        setTorchStrengthLevelExt(torchStrength);
+        return OK;
+    } else {
+        return deviceInfo->turnOnTorchWithStrengthLevel(torchStrength);
+    }
 }
 
 bool CameraProviderManager::shouldSkipTorchStrengthUpdate(const std::string &id,
@@ -588,7 +607,13 @@ int32_t CameraProviderManager::getTorchDefaultStrengthLevel(const std::string &i
     auto deviceInfo = findDeviceInfoLocked(id);
     if (deviceInfo == nullptr) return NAME_NOT_FOUND;
 
-    return deviceInfo->mTorchDefaultStrengthLevel;
+    // Use the extension only for the camera that has flash unit
+    // Otherwise fallback to the default impl.
+    if (deviceInfo->hasFlashUnit() && supportsTorchStrengthControlExt()) {
+        return getTorchDefaultStrengthLevelExt();
+    } else {
+        return deviceInfo->mTorchDefaultStrengthLevel;
+    }
 }
 
 bool CameraProviderManager::supportSetTorchMode(const std::string &id) const {
@@ -3545,8 +3570,21 @@ status_t CameraProviderManager::getCameraCharacteristicsLocked(const std::string
         int rotationOverride) const {
     auto deviceInfo = findDeviceInfoLocked(id);
     if (deviceInfo != nullptr) {
-        return deviceInfo->getCameraCharacteristics(overrideForPerfClass, characteristics,
+        status_t res = deviceInfo->getCameraCharacteristics(overrideForPerfClass, characteristics,
                 rotationOverride);
+        if (deviceInfo->hasFlashUnit() && supportsTorchStrengthControlExt()) {
+            int32_t maxTorchStrength = getTorchMaxStrengthLevelExt();
+            int32_t defaultTorchStrength = getTorchDefaultStrengthLevelExt();
+            // if max strength level > 0, means the device supports
+            // strength level controllable torch.
+            if (maxTorchStrength > 0) {
+                characteristics->update(ANDROID_FLASH_INFO_STRENGTH_MAXIMUM_LEVEL,
+                        &maxTorchStrength, 1);
+                characteristics->update(ANDROID_FLASH_INFO_STRENGTH_DEFAULT_LEVEL,
+                        &defaultTorchStrength, 1);
+            }
+        }
+        return res;
     }
 
     // Find hidden physical camera characteristics
