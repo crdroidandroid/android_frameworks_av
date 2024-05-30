@@ -752,7 +752,11 @@ status_t CameraProviderManager::notifyUsbDeviceEvent(int32_t eventId,
         }
     } else if (eventId
           == android::hardware::ICameraService::EVENT_USB_DEVICE_DETACHED) {
+        size_t usbNum = mExternalUsbDevicesForProvider.first.size();
         usbDeviceDetached(usbDeviceId);
+        if (usbNum > 1) {
+            startExternalLazyProvider();
+        }
     }
 
     return OK;
