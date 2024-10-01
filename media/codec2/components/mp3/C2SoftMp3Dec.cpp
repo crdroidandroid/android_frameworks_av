@@ -114,7 +114,9 @@ c2_status_t C2SoftMP3::onInit() {
 c2_status_t C2SoftMP3::onStop() {
     // Make sure that the next buffer output does not still
     // depend on fragments from the last one decoded.
-    pvmp3_InitDecoder(mConfig, mDecoderBuf);
+    if (mDecoderBuf) {
+        pvmp3_InitDecoder(mConfig, mDecoderBuf);
+    }
     mSignalledError = false;
     mIsFirst = true;
     mSignalledOutputEos = false;
