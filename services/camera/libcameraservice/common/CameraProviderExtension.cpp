@@ -14,30 +14,26 @@
  * limitations under the License.
  */
 
-#ifndef TARGET_PROVIDES_CAMERA_PROVIDER_EXT_LIB
-
 #include "common/CameraProviderExtension.h"
 
-bool supportsTorchStrengthControlExt() {
+__attribute__((weak)) bool supportsTorchStrengthControlExt() {
     return false;
 }
 
-int32_t getTorchDefaultStrengthLevelExt() {
+__attribute__((weak)) int32_t getTorchDefaultStrengthLevelExt() {
     // Without extension, assume only one level of torch strength
     return 1;
 }
 
-int32_t getTorchMaxStrengthLevelExt() {
+__attribute__((weak)) int32_t getTorchMaxStrengthLevelExt() {
     // Without extension, assume only one level of torch strength
     return 1;
 }
 
-int32_t getTorchStrengthLevelExt() {
+__attribute__((weak)) int32_t getTorchStrengthLevelExt() {
     return 0;
 }
 
-void setTorchStrengthLevelExt(__unused int32_t torchStrength) {
+__attribute__((weak)) void setTorchStrengthLevelExt(__unused int32_t torchStrength) {
     // Nothing
 }
-
-#endif
