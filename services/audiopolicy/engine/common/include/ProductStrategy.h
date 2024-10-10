@@ -92,6 +92,10 @@ public:
 
     bool isDefault() const;
 
+    bool isPatchStrategy() const {
+        return getVolumeGroupForStreamType(AUDIO_STREAM_PATCH) != VOLUME_GROUP_NONE;
+    }
+
     void dump(String8 *dst, int spaces = 0) const;
 
 private:
