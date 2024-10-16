@@ -743,6 +743,25 @@ void C2SoftMpeg2Dec::resetPlugin() {
 }
 
 status_t C2SoftMpeg2Dec::deleteDecoder() {
+    // API call to IV_CMD_RETRIEVE_MEMREC not only retrieves the memory records
+    // but also joins active threads and destroys conditional thread variables and
+    // mutex locks for each thread.
+    iv_retrieve_mem_rec_ip_t s_retrieve_mem_ip;
+    iv_retrieve_mem_rec_op_t s_retrieve_mem_op;
+
+    s_retrieve_mem_ip.pv_mem_rec_location = (iv_mem_rec_t *)mMemRecords;
+    s_retrieve_mem_ip.e_cmd = IV_CMD_RETRIEVE_MEMREC;
+    s_retrieve_mem_ip.u4_size = sizeof(iv_retrieve_mem_rec_ip_t);
+    s_retrieve_mem_op.u4_size = sizeof(iv_retrieve_mem_rec_op_t);
+
+    IV_API_CALL_STATUS_T status = ivdec_api_function(mDecHandle,
+                                                    &s_retrieve_mem_ip,
+                                                    &s_retrieve_mem_op);
+    if (IV_SUCCESS != status) {
+        ALOGE("error in %s: 0x%x", __func__, s_retrieve_mem_op.u4_error_code);
+        return UNKNOWN_ERROR;
+    }
+
     if (mMemRecords) {
         iv_mem_rec_t *ps_mem_rec = mMemRecords;
 
