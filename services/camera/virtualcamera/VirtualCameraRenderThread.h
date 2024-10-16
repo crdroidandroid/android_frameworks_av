@@ -221,8 +221,8 @@ class VirtualCameraRenderThread {
   std::mutex mLock;
   std::deque<std::unique_ptr<ProcessCaptureRequestTask>> mQueue GUARDED_BY(mLock);
   std::condition_variable mCondVar;
-  volatile bool mTextureUpdateRequested GUARDED_BY(mLock);
-  volatile bool mPendingExit GUARDED_BY(mLock);
+  volatile bool GUARDED_BY(mLock) mTextureUpdateRequested = false;
+  volatile bool GUARDED_BY(mLock) mPendingExit = false;
 
   // Acquisition timestamp of last frame.
   std::atomic<uint64_t> mLastAcquisitionTimestampNanoseconds;
