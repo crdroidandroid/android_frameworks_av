@@ -104,14 +104,14 @@ class MediaPlayerService : public BnMediaPlayerService
         virtual int64_t         getBufferDurationInUs() const;
         virtual audio_output_flags_t getFlags() const { return mFlags; }
 
-        virtual status_t        open(
+        status_t open(
                 uint32_t sampleRate, int channelCount, audio_channel_mask_t channelMask,
                 audio_format_t format, int bufferCount,
-                AudioCallback cb, void *cookie,
+                AudioCallback cb, const wp<RefBase>& cookie,
                 audio_output_flags_t flags = AUDIO_OUTPUT_FLAG_NONE,
                 const audio_offload_info_t *offloadInfo = NULL,
                 bool doNotReconnect = false,
-                uint32_t suggestedFrameCount = 0);
+                uint32_t suggestedFrameCount = 0) override;
 
         virtual void            setPlayerIId(int32_t playerIId);
 
@@ -164,7 +164,7 @@ class MediaPlayerService : public BnMediaPlayerService
         sp<AudioOutput>         mNextOutput;
         int                     mCachedPlayerIId;
         AudioCallback           mCallback;
-        void *                  mCallbackCookie;
+        wp<RefBase>             mCallbackCookie;
         sp<CallbackData>        mCallbackData;
         audio_stream_type_t     mStreamType;
         audio_attributes_t *    mAttributes;

@@ -29,7 +29,7 @@ namespace android {
 
 struct AwesomePlayer;
 
-class AudioPlayer : AudioTrack::IAudioTrackCallback {
+class AudioPlayer : public AudioTrack::IAudioTrackCallback {
 public:
     enum {
         REACHED_EOS,
@@ -97,14 +97,15 @@ private:
     MediaBufferBase *mFirstBuffer;
 
     sp<MediaPlayerBase::AudioSink> mAudioSink;
+    sp<MediaPlayerBase::WeakWrapper<AudioPlayer>> mAudioPlayerWrapper;
 
     bool mPlaying;
     int64_t mStartPosUs;
     const uint32_t mCreateFlags;
 
     static size_t AudioSinkCallback(
-            MediaPlayerBase::AudioSink *audioSink,
-            void *data, size_t size, void *me,
+            const sp<MediaPlayerBase::AudioSink>& audioSink,
+            void *data, size_t size, const wp<RefBase>& me,
             MediaPlayerBase::AudioSink::cb_event_t event);
 
     size_t fillBuffer(void *data, size_t size);

@@ -43,8 +43,8 @@ struct NuPlayer::Renderer : public AHandler {
              uint32_t flags = 0);
 
     static size_t AudioSinkCallback(
-            MediaPlayerBase::AudioSink *audioSink,
-            void *data, size_t size, void *me,
+            const sp<MediaPlayerBase::AudioSink>& audioSink,
+            void *data, size_t size, const wp<RefBase>& me,
             MediaPlayerBase::AudioSink::cb_event_t event);
 
     void queueBuffer(

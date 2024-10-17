@@ -76,6 +76,33 @@ public:
         virtual ~Listener() {}
     };
 
+    // For the AudioCallback, we provide a WeakWrapper class
+    // to wrap a virtual RefBase derived object to pass into the AudioCallback.
+    // This is not used for NuPlayer::Renderer, only for legacy AudioPlayer implementation.
+    template <typename T>
+    class WeakWrapper : public RefBase {
+    public:
+        explicit WeakWrapper(const sp<T>& object)
+                : mObject(object) {}
+
+        sp<T> promote() const {
+            if (mObject == nullptr) return {};
+            return mObject.promote();
+        }
+
+        static sp<T> promoteFromRefBase(const wp<RefBase>& weakWrapper) {
+            if (weakWrapper == nullptr) return {};
+            const auto refBase = weakWrapper.promote();
+            if (!refBase) return {};
+            const auto wrapper = sp<WeakWrapper<T>>::fromExisting(
+                    static_cast<WeakWrapper<T>*>(refBase.get()));
+            return wrapper->promote();
+        }
+
+    private:
+        const wp<T> mObject;
+    };
+
     // AudioSink: abstraction layer for audio output
     class AudioSink : public RefBase {
     public:
@@ -89,8 +116,8 @@ public:
 
         // Callback returns the number of bytes actually written to the buffer.
         typedef size_t (*AudioCallback)(
-                AudioSink *audioSink, void *buffer, size_t size, void *cookie,
-                        cb_event_t event);
+                const sp<AudioSink>& audioSink, void *buffer, size_t size,
+                const wp<RefBase>& cookie, cb_event_t event);
 
         virtual             ~AudioSink() {}
         virtual bool        ready() const = 0; // audio output is open and ready
@@ -117,7 +144,7 @@ public:
                 audio_format_t format=AUDIO_FORMAT_PCM_16_BIT,
                 int bufferCount=DEFAULT_AUDIOSINK_BUFFERCOUNT,
                 AudioCallback cb = NULL,
-                void *cookie = NULL,
+                const wp<RefBase>& cookie = {},
                 audio_output_flags_t flags = AUDIO_OUTPUT_FLAG_NONE,
                 const audio_offload_info_t *offloadInfo = NULL,
                 bool doNotReconnect = false,

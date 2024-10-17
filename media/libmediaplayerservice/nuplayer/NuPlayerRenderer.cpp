@@ -912,12 +912,15 @@ void NuPlayer::Renderer::notifyIfMediaRenderingStarted_l() {
 
 // static
 size_t NuPlayer::Renderer::AudioSinkCallback(
-        MediaPlayerBase::AudioSink * /* audioSink */,
+        const sp<MediaPlayerBase::AudioSink>& /* audioSink */,
         void *buffer,
         size_t size,
-        void *cookie,
+        const wp<RefBase>& cookie,
         MediaPlayerBase::AudioSink::cb_event_t event) {
-    NuPlayer::Renderer *me = (NuPlayer::Renderer *)cookie;
+    if (cookie == nullptr) return 0;
+    const auto ref = cookie.promote();
+    if (!ref) return 0;
+    const auto me = static_cast<NuPlayer::Renderer*>(ref.get()); // we already hold a sp.
 
     switch (event) {
         case MediaPlayerBase::AudioSink::CB_EVENT_FILL_BUFFER:

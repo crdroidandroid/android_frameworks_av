@@ -101,6 +101,10 @@ status_t AudioPlayer::start(bool sourceAlreadyStarted) {
 
     CHECK(mFirstBuffer == NULL);
 
+    if (!mAudioPlayerWrapper) {
+        mAudioPlayerWrapper = sp<MediaPlayerBase::WeakWrapper<AudioPlayer>>::make(this);
+    }
+
     MediaSource::ReadOptions options;
     if (mSeeking) {
         options.setSeekTo(mSeekTimeUs);
@@ -203,7 +207,7 @@ status_t AudioPlayer::start(bool sourceAlreadyStarted) {
                 mSampleRate, numChannels, channelMask, audioFormat,
                 DEFAULT_AUDIOSINK_BUFFERCOUNT,
                 &AudioPlayer::AudioSinkCallback,
-                this,
+                mAudioPlayerWrapper,
                 (audio_output_flags_t)flags,
                 useOffload() ? &offloadInfo : NULL);
 
@@ -430,10 +434,11 @@ status_t AudioPlayer::getPlaybackRate(AudioPlaybackRate *rate /* nonnull */) {
 
 // static
 size_t AudioPlayer::AudioSinkCallback(
-        MediaPlayerBase::AudioSink * /* audioSink */,
-        void *buffer, size_t size, void *cookie,
+        const sp<MediaPlayerBase::AudioSink>& /* audioSink */,
+        void *buffer, size_t size, const wp<RefBase>& cookie,
         MediaPlayerBase::AudioSink::cb_event_t event) {
-    AudioPlayer *me = (AudioPlayer *)cookie;
+    const auto me = MediaPlayerBase::WeakWrapper<AudioPlayer>::promoteFromRefBase(cookie);
+    if (!me) return 0;
 
     switch(event) {
     case MediaPlayerBase::AudioSink::CB_EVENT_FILL_BUFFER:
