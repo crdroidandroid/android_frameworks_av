@@ -1159,11 +1159,10 @@ status_t AudioRecord::obtainBuffer(Buffer* audioBuffer, const struct timespec *r
             // start of lock scope
             AutoMutex lock(mLock);
 
-            uint32_t newSequence = mSequence;
             // did previous obtainBuffer() fail due to media server death or voluntary invalidation?
             if (status == DEAD_OBJECT) {
                 // re-create track, unless someone else has already done so
-                if (newSequence == oldSequence) {
+                if (mSequence == oldSequence) {
                     if (!audio_is_linear_pcm(mFormat)) {
                         // If compressed capture, don't attempt to restore the track.
                         // Return a DEAD_OBJECT error and let the caller recreate.
@@ -1179,7 +1178,7 @@ status_t AudioRecord::obtainBuffer(Buffer* audioBuffer, const struct timespec *r
                     }
                 }
             }
-            oldSequence = newSequence;
+            oldSequence = mSequence;
 
             // Keep the extra references
             proxy = mProxy;
