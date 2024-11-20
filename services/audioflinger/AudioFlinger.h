@@ -771,9 +771,6 @@ private:
     std::atomic<size_t> mClientSharedHeapSize = kMinimumClientSharedHeapSizeBytes;
     static constexpr size_t kMinimumClientSharedHeapSizeBytes = 1024 * 1024; // 1MB
 
-    // when a global effect was last enabled
-    nsecs_t mGlobalEffectEnableTime GUARDED_BY(mutex()) = 0;
-
     /* const */ sp<IAfPatchPanel> mPatchPanel;
 
     const sp<EffectsFactoryHalInterface> mEffectsFactoryHal =
