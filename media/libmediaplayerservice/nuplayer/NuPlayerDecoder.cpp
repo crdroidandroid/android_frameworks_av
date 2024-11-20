@@ -374,9 +374,18 @@ void NuPlayer::Decoder::onConfigure(const sp<AMessage> &format) {
     }
     rememberCodecSpecificData(format);
 
-    // the following should work in configured state
-    CHECK_EQ((status_t)OK, mCodec->getOutputFormat(&mOutputFormat));
-    CHECK_EQ((status_t)OK, mCodec->getInputFormat(&mInputFormat));
+    err = mCodec->getOutputFormat(&mOutputFormat);
+    if (err == OK) {
+        err = mCodec->getInputFormat(&mInputFormat);
+    }
+    if (err != OK) {
+        ALOGE("Failed to get input/output format from [%s] decoder (err=%d)",
+                mComponentName.c_str(), err);
+        mCodec->release();
+        mCodec.clear();
+        handleError(err);
+        return;
+    }
 
     {
         Mutex::Autolock autolock(mStatsLock);
