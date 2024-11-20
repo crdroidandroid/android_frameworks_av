@@ -310,8 +310,16 @@ status_t ClientProxy::obtainBuffer(Buffer* buffer, const struct timespec *reques
             ts = NULL;
             break;
         }
+
         int32_t old = android_atomic_and(~CBLK_FUTEX_WAKE, &cblk->mFutex);
-        if (!(old & CBLK_FUTEX_WAKE)) {
+
+        // Check inactive to prevent waiting if the track has been disabled due to underrun
+        // (or invalidated).  The subsequent call to obtainBufer will return NOT_ENOUGH_DATA
+        // (or DEAD_OBJECT) and restart (or restore) the track.
+        const int32_t current_flags = android_atomic_acquire_load(&cblk->mFlags);
+        const bool inactive = current_flags & (CBLK_INVALID | CBLK_DISABLED);
+
+        if (!(old & CBLK_FUTEX_WAKE) && !inactive) {
             if (measure && !beforeIsValid) {
                 clock_gettime(CLOCK_MONOTONIC, &before);
                 beforeIsValid = true;
