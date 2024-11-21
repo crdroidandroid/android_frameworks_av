@@ -8617,6 +8617,10 @@ reacquire_wakelock:
 
             timestampCorrectionEnabled = isTimestampCorrectionEnabled_l();
             lockEffectChains_l(effectChains);
+            // We're exiting locked scope with non empty activeTracks, make sure
+            // that we're not in standby mode which we could have entered if some
+            // tracks were muted/unmuted.
+            mStandby = false;
         }
 
         // thread mutex is now unlocked, mActiveTracks unknown, activeTracks.size() > 0
