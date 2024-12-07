@@ -23,11 +23,13 @@ bool supportsTorchStrengthControlExt() {
 }
 
 int32_t getTorchDefaultStrengthLevelExt() {
-    return 0;
+    // Without extension, assume only one level of torch strength
+    return 1;
 }
 
 int32_t getTorchMaxStrengthLevelExt() {
-    return 0;
+    // Without extension, assume only one level of torch strength
+    return 1;
 }
 
 int32_t getTorchStrengthLevelExt() {
