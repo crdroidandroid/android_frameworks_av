@@ -586,6 +586,7 @@ status_t CameraProviderManager::turnOnTorchWithStrengthLevel(const std::string &
 
         deviceInfo->setTorchMode(torchStrength > 0);
         setTorchStrengthLevelExt(torchStrength);
+        deviceInfo->mTorchStrengthLevel = torchStrength;
         return OK;
     } else {
         return deviceInfo->turnOnTorchWithStrengthLevel(torchStrength);
