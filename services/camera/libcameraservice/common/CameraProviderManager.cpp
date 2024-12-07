@@ -577,7 +577,13 @@ status_t CameraProviderManager::turnOnTorchWithStrengthLevel(const std::string &
     // Use the extension only for the camera that has flash unit
     // Otherwise fallback to the default impl.
     if (deviceInfo->hasFlashUnit() && supportsTorchStrengthControlExt()) {
-        // Turn on the torch if level > 0.
+        // Return BAD_VALUE if the strength is not in the supported
+        // range.
+        if (torchStrength <= 0 || torchStrength > getTorchMaxStrengthLevelExt()) {
+            ALOGE("%s: Invalid torch strength level %d", __FUNCTION__, torchStrength);
+            return BAD_VALUE;
+        }
+
         deviceInfo->setTorchMode(torchStrength > 0);
         setTorchStrengthLevelExt(torchStrength);
         return OK;
