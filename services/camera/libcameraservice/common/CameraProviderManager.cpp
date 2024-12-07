@@ -684,7 +684,15 @@ status_t CameraProviderManager::setTorchMode(const std::string &id, bool enabled
     }
     saveRef(DeviceMode::TORCH, deviceInfo->mId, halCameraProvider);
 
-    return deviceInfo->setTorchMode(enabled);
+    res = deviceInfo->setTorchMode(enabled);
+    if (!enabled &&
+        deviceInfo->hasFlashUnit() && supportsTorchStrengthControlExt()) {
+        // Need to reset torch strength back to default when torch is turned off
+        int32_t defaultLevel = getTorchDefaultStrengthLevelExt();
+        setTorchStrengthLevelExt(defaultLevel);
+        deviceInfo->mTorchStrengthLevel = defaultLevel;
+    }
+    return res;
 }
 
 status_t CameraProviderManager::setUpVendorTags() {
