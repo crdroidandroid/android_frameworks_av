@@ -1756,8 +1756,8 @@ status_t CameraProviderManager::ProviderInfo::DeviceInfo3::fixupTorchStrengthTag
     status_t res = OK;
     auto& c = mCameraCharacteristics;
     auto flashInfoStrengthDefaultLevelEntry = c.find(ANDROID_FLASH_INFO_STRENGTH_DEFAULT_LEVEL);
-    if (flashInfoStrengthDefaultLevelEntry.count == 0) {
-        int32_t flashInfoStrengthDefaultLevel = 1;
+    if (flashInfoStrengthDefaultLevelEntry.count == 0 || supportsTorchStrengthControlExt()) {
+        int32_t flashInfoStrengthDefaultLevel = getTorchDefaultStrengthLevelExt();
         res = c.update(ANDROID_FLASH_INFO_STRENGTH_DEFAULT_LEVEL,
                 &flashInfoStrengthDefaultLevel, 1);
         if (res != OK) {
@@ -1767,8 +1767,8 @@ status_t CameraProviderManager::ProviderInfo::DeviceInfo3::fixupTorchStrengthTag
         }
     }
     auto flashInfoStrengthMaximumLevelEntry = c.find(ANDROID_FLASH_INFO_STRENGTH_MAXIMUM_LEVEL);
-    if (flashInfoStrengthMaximumLevelEntry.count == 0) {
-        int32_t flashInfoStrengthMaximumLevel = 1;
+    if (flashInfoStrengthMaximumLevelEntry.count == 0 || supportsTorchStrengthControlExt()) {
+        int32_t flashInfoStrengthMaximumLevel = getTorchMaxStrengthLevelExt();
         res = c.update(ANDROID_FLASH_INFO_STRENGTH_MAXIMUM_LEVEL,
                 &flashInfoStrengthMaximumLevel, 1);
         if (res != OK) {
@@ -3585,21 +3585,8 @@ status_t CameraProviderManager::getCameraCharacteristicsLocked(const std::string
         int rotationOverride) const {
     auto deviceInfo = findDeviceInfoLocked(id);
     if (deviceInfo != nullptr) {
-        status_t res = deviceInfo->getCameraCharacteristics(overrideForPerfClass, characteristics,
+        return deviceInfo->getCameraCharacteristics(overrideForPerfClass, characteristics,
                 rotationOverride);
-        if (deviceInfo->hasFlashUnit() && supportsTorchStrengthControlExt()) {
-            int32_t maxTorchStrength = getTorchMaxStrengthLevelExt();
-            int32_t defaultTorchStrength = getTorchDefaultStrengthLevelExt();
-            // if max strength level > 0, means the device supports
-            // strength level controllable torch.
-            if (maxTorchStrength > 0) {
-                characteristics->update(ANDROID_FLASH_INFO_STRENGTH_MAXIMUM_LEVEL,
-                        &maxTorchStrength, 1);
-                characteristics->update(ANDROID_FLASH_INFO_STRENGTH_DEFAULT_LEVEL,
-                        &defaultTorchStrength, 1);
-            }
-        }
-        return res;
     }
 
     // Find hidden physical camera characteristics
