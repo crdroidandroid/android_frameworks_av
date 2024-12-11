@@ -4001,6 +4001,7 @@ status_t AudioPolicyManager::registerPolicyMixes(const Vector<AudioMix>& mixes)
     bool checkOutputs = false;
     sp<HwModule> rSubmixModule;
     Vector<AudioMix> registeredMixes;
+    AudioDeviceTypeAddrVector devices;
     // examine each mix's route type
     for (size_t i = 0; i < mixes.size(); i++) {
         AudioMix mix = mixes[i];
@@ -4124,6 +4125,7 @@ status_t AudioPolicyManager::registerPolicyMixes(const Vector<AudioMix>& mixes)
                 break;
             } else {
                 checkOutputs = true;
+                devices.push_back(AudioDeviceTypeAddr(mix.mDeviceType, mix.mDeviceAddress.c_str()));
                 registeredMixes.add(mix);
             }
         }
@@ -4139,7 +4141,10 @@ status_t AudioPolicyManager::registerPolicyMixes(const Vector<AudioMix>& mixes)
         }
     } else if (checkOutputs) {
         checkForDeviceAndOutputChanges();
-        updateCallAndOutputRouting();
+        changeOutputDevicesMuteState(devices);
+        updateCallAndOutputRouting(false /* forceVolumeReeval */, 0 /* delayMs */,
+            true /* skipDelays */);
+        changeOutputDevicesMuteState(devices);
     }
     return res;
 }
@@ -4150,6 +4155,7 @@ status_t AudioPolicyManager::unregisterPolicyMixes(Vector<AudioMix> mixes)
     status_t res = NO_ERROR;
     bool checkOutputs = false;
     sp<HwModule> rSubmixModule;
+    AudioDeviceTypeAddrVector devices;
     // examine each mix's route type
     for (const auto& mix : mixes) {
         if ((mix.mRouteFlags & MIX_ROUTE_FLAG_LOOP_BACK) == MIX_ROUTE_FLAG_LOOP_BACK) {
@@ -4197,6 +4203,7 @@ status_t AudioPolicyManager::unregisterPolicyMixes(Vector<AudioMix> mixes)
                 res = INVALID_OPERATION;
                 continue;
             } else {
+                devices.push_back(AudioDeviceTypeAddr(mix.mDeviceType, mix.mDeviceAddress.c_str()));
                 checkOutputs = true;
             }
         }
@@ -4204,7 +4211,10 @@ status_t AudioPolicyManager::unregisterPolicyMixes(Vector<AudioMix> mixes)
 
     if (res == NO_ERROR && checkOutputs) {
         checkForDeviceAndOutputChanges();
-        updateCallAndOutputRouting();
+        changeOutputDevicesMuteState(devices);
+        updateCallAndOutputRouting(false /* forceVolumeReeval */, 0 /* delayMs */,
+            true /* skipDelays */);
+        changeOutputDevicesMuteState(devices);
     }
     return res;
 }
