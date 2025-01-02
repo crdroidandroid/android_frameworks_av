@@ -883,7 +883,7 @@ int64_t MPEG4Writer::estimateMoovBoxSize(int32_t bitRate) {
 
     // Max file size limit is set
     if (mMaxFileSizeLimitBytes != 0 && mIsFileSizeLimitExplicitlyRequested) {
-        size = mMaxFileSizeLimitBytes * 6 / 1000;
+        size = mMaxFileSizeLimitBytes / 1000 * 6;
     }
 
     // Max file duration limit is set
