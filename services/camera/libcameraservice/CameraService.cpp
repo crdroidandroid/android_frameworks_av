@@ -38,6 +38,7 @@
 #include <aidl/AidlCameraService.h>
 #include <android-base/macros.h>
 #include <android-base/parseint.h>
+#include <android-base/properties.h>
 #include <android-base/strings.h>
 #include <android_companion_virtualdevice_flags.h>
 #include <android/companion/virtualnative/IVirtualDeviceManagerNative.h>
@@ -1957,6 +1958,14 @@ status_t CameraService::checkIfDeviceIsUsable(const std::string& cameraId) const
     return NO_ERROR;
 }
 
+bool isPrivilegedClient(const std::string &packageName) {
+    std::vector<std::string> privilegedClientList = android::base::Split(
+            android::base::GetProperty("persist.vendor.camera.privapp.list", ""), ",");
+    auto it = std::find(privilegedClientList.begin(), privilegedClientList.end(),
+            packageName);
+    return it != privilegedClientList.end();
+}
+
 void CameraService::finishConnectLocked(const sp<BasicClient>& client,
         const CameraService::DescriptorPtr& desc, int oomScoreOffset, bool systemNativeClient) {
 
@@ -1965,6 +1974,10 @@ void CameraService::finishConnectLocked(const sp<BasicClient>& client,
             CameraService::CameraClientManager::makeClientDescriptor(client, desc,
                     oomScoreOffset, systemNativeClient);
     auto evicted = mActiveClientManager.addAndEvict(clientDescriptor);
+
+    if (isPrivilegedClient(client->getPackageName())) {
+        evicted.clear();
+    }
 
     logConnected(desc->getKey(), static_cast<int>(desc->getOwnerId()),
             client->getPackageName());
@@ -2112,6 +2125,10 @@ status_t CameraService::handleEvictionsLocked(const std::string& cameraId, int c
 
         // Find clients that would be evicted
         auto evicted = mActiveClientManager.wouldEvict(clientDescriptor);
+
+        if (isPrivilegedClient(packageName)) {
+            evicted.clear();
+        }
 
         // If the incoming client was 'evicted,' higher priority clients have the camera in the
         // background, so we cannot do evictions
