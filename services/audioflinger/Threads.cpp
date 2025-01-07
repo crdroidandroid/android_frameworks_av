@@ -5874,10 +5874,11 @@ PlaybackThread::mixer_state MixerThread::prepareTracks_l(
                                               * track->getAppVolume();
                     }
                 } else {
-                    if (track->isPlaybackRestricted()) {
+                    if (track->isPlaybackRestricted() || track->isAppMuted()) {
                         volume = 0.f;
                     } else {
-                        volume = masterVolume * track->getPortVolume();
+                        volume = masterVolume * track->getPortVolume()
+                                              * track->getAppVolume();
                     }
                 }
                 handleVoipVolume_l(&volume);
@@ -6071,8 +6072,9 @@ PlaybackThread::mixer_state MixerThread::prepareTracks_l(
                     v = 0;
                 }
             } else {
-                v = masterVolume * track->getPortVolume();
-                if (track->isPlaybackRestricted()) {
+                v = masterVolume * track->getPortVolume()
+                                 * track->getAppVolume();
+                if (track->isPlaybackRestricted() || track->isAppMuted()) {
                     v = 0;
                 }
             }
@@ -6868,11 +6870,12 @@ void DirectOutputThread::processVolume_l(IAfTrack* track, bool lastTrack)
                                clientVolumeMute,
                                shaperVolume == 0.f});
     } else {
-        if (mMasterMute || track->isPlaybackRestricted()) {
+        if (mMasterMute || track->isPlaybackRestricted() || track->isAppMuted()) {
             left = right = 0;
         } else {
             float typeVolume = track->getPortVolume();
-            const float v = mMasterVolume * typeVolume * shaperVolume;
+            float appVolume = track->getAppVolume();
+            const float v = mMasterVolume * typeVolume * shaperVolume * appVolume;
 
             if (left > GAIN_FLOAT_UNITY) {
                 left = GAIN_FLOAT_UNITY;
