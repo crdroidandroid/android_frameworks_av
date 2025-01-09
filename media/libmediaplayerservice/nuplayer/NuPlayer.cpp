@@ -2079,24 +2079,23 @@ void NuPlayer::updateVideoSize(
 
     int32_t displayWidth, displayHeight;
     if (outputFormat != NULL) {
-        int32_t width, height;
-        CHECK(outputFormat->findInt32("width", &width));
-        CHECK(outputFormat->findInt32("height", &height));
-
-        int32_t cropLeft, cropTop, cropRight, cropBottom;
-        CHECK(outputFormat->findRect(
+        int32_t width, height, cropLeft, cropTop, cropRight, cropBottom;
+        if (outputFormat->findInt32("width", &width)
+                && outputFormat->findInt32("height", &height)
+                && outputFormat->findRect(
                     "crop",
-                    &cropLeft, &cropTop, &cropRight, &cropBottom));
+                    &cropLeft, &cropTop, &cropRight, &cropBottom)) {
 
-        displayWidth = cropRight - cropLeft + 1;
-        displayHeight = cropBottom - cropTop + 1;
+            displayWidth = cropRight - cropLeft + 1;
+            displayHeight = cropBottom - cropTop + 1;
 
-        ALOGV("Video output format changed to %d x %d "
-             "(crop: %d x %d @ (%d, %d))",
-             width, height,
-             displayWidth,
-             displayHeight,
-             cropLeft, cropTop);
+            ALOGV("Video output format changed to %d x %d "
+                "(crop: %d x %d @ (%d, %d))",
+                width, height,
+                displayWidth,
+                displayHeight,
+                cropLeft, cropTop);
+        }
     } else {
         if (!inputFormat->findInt32("width", &displayWidth)
             || !inputFormat->findInt32("height", &displayHeight)) {
