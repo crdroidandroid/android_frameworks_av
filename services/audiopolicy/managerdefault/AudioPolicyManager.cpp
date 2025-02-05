@@ -1139,7 +1139,9 @@ sp<IOProfile> AudioPolicyManager::searchCompatibleProfileHwModules (
                                         audio_channel_mask_t channelMask,
                                         audio_output_flags_t flags,
                                         bool directOnly) {
-    sp<IOProfile> profile;
+    sp<IOProfile> directOnlyProfile = nullptr;
+    sp<IOProfile> compressOffloadProfile = nullptr;
+    sp<IOProfile> profile = nullptr;
     for (const auto& hwModule : hwModules) {
         for (const auto& curProfile : hwModule->getOutputProfiles()) {
              if (curProfile->getCompatibilityScore(devices,
@@ -1161,19 +1163,21 @@ sp<IOProfile> AudioPolicyManager::searchCompatibleProfileHwModules (
                 return curProfile;
              }
 
-             // when searching for direct outputs, if several profiles are compatible, give priority
-             // to one with offload capability
-             if (profile != 0 &&
-                 ((curProfile->getFlags() & AUDIO_OUTPUT_FLAG_COMPRESS_OFFLOAD) == 0)) {
-                continue;
-             }
              profile = curProfile;
-             if ((profile->getFlags() & AUDIO_OUTPUT_FLAG_COMPRESS_OFFLOAD) != 0) {
-                 break;
+             if ((flags == AUDIO_OUTPUT_FLAG_DIRECT) &&
+                 curProfile->getFlags() == AUDIO_OUTPUT_FLAG_DIRECT) {
+                 directOnlyProfile = curProfile;
+             }
+
+             if ((curProfile->getFlags() & AUDIO_OUTPUT_FLAG_COMPRESS_OFFLOAD) != 0) {
+                 compressOffloadProfile = curProfile;
              }
         }
     }
-    return profile;
+
+    return directOnlyProfile ? directOnlyProfile
+                            : (compressOffloadProfile ? compressOffloadProfile : profile);
+
 }
 
 sp<IOProfile> AudioPolicyManager::getSpatializerOutputProfile(
