@@ -1448,6 +1448,11 @@ void EffectChain::setVolumeForOutput_l(uint32_t left, uint32_t right)
 status_t EffectModule::sendSetAudioDevicesCommand(
         const AudioDeviceTypeAddrVector &devices, uint32_t cmdCode)
 {
+    // for AIDL, use setDevices to pass the AudioDeviceTypeAddrVector
+    if (!EffectConfiguration::isHidl()) {
+        return mEffectInterface->setDevices(devices);
+    }
+
     audio_devices_t deviceType = deviceTypesToBitMask(getAudioDeviceTypes(devices));
     if (deviceType == AUDIO_DEVICE_NONE) {
         return NO_ERROR;
