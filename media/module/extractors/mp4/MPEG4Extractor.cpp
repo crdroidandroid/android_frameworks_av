@@ -22,6 +22,7 @@
 #include <algorithm>
 #include <map>
 #include <memory>
+#include <numeric>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -190,6 +191,8 @@ private:
     int32_t parseHEVCLayerId(const uint8_t *data, size_t size);
     size_t getNALLengthSizeFromAvcCsd(const uint8_t *data, const size_t size) const;
     size_t getNALLengthSizeFromHevcCsd(const uint8_t *data, const size_t size) const;
+
+    int64_t rescaleTime(int64_t value, int64_t scale, int64_t originScale) const;
 
     struct TrackFragmentHeaderInfo {
         enum Flags {
@@ -6200,6 +6203,63 @@ size_t MPEG4Source::getNALLengthSizeFromHevcCsd(const uint8_t *data, const size_
     return 1 + (data[14 + 7] & 3);
 }
 
+int64_t MPEG4Source::rescaleTime(int64_t value, int64_t scale, int64_t originScale) const {
+    // Rescale time: calculate value * scale / originScale
+    if (value == 0 || scale == 0) {
+        return 0;
+    }
+
+    CHECK(value > 0);
+    CHECK(scale > 0);
+    CHECK(originScale > 0);
+
+    if (originScale >= scale && (originScale % scale) == 0) {
+        int64_t factor = originScale / scale;
+        return value / factor;
+    } else if (originScale < scale && (scale % originScale) == 0) {
+        int64_t factor = scale / originScale;
+        if (__builtin_mul_overflow(value, factor, &value)) {
+            return std::numeric_limits<int64_t>::max();
+        }
+        return value;
+    } else if (originScale >= value && (originScale % value) == 0) {
+        int64_t factor = originScale / value;
+        return scale / factor;
+    } else if (originScale < value && (value % originScale) == 0) {
+        int64_t factor = value / originScale;
+        if (__builtin_mul_overflow(scale, factor, &value)) {
+            return std::numeric_limits<int64_t>::max();
+        }
+        return value;
+    } else {
+        int64_t rescaleValue;
+        if (!__builtin_mul_overflow(value, scale, &rescaleValue)) {
+            return rescaleValue / originScale;
+        } else {
+            // Divide the max gcd before calc scale/originScale
+            int64_t gcdOfScaleAndOriginScale = std::gcd(scale, originScale);
+            int64_t simpleScale = scale / gcdOfScaleAndOriginScale;
+            int64_t simpleOriginScale = originScale / gcdOfScaleAndOriginScale;
+            // Divide the max gcd before calc value/simpleOriginScale
+            int64_t gcdOfValueAndSimpleOriginScale = std::gcd(value, simpleOriginScale);
+            int64_t simpleValue = value / gcdOfValueAndSimpleOriginScale;
+            simpleOriginScale /= gcdOfValueAndSimpleOriginScale;
+
+            if (!__builtin_mul_overflow(simpleValue, simpleScale, &simpleValue)) {
+                return simpleValue / simpleOriginScale;
+            } else {
+                // Fallback using long double to calculate the rescale value
+                long double rescale = (long double)value / originScale * scale;
+                if (rescale > std::numeric_limits<int64_t>::max()) {
+                    return std::numeric_limits<int64_t>::max();
+                }
+
+                return rescale;
+            }
+        }
+    }
+}
+
 media_status_t MPEG4Source::read(
         MediaBufferHelper **out, const ReadOptions *options) {
     Mutex::Autolock autoLock(mLock);
@@ -6264,16 +6324,26 @@ media_status_t MPEG4Source::read(
             if( mode != ReadOptions::SEEK_FRAME_INDEX) {
                 int64_t elstInitialEmptyEditUs = 0, elstShiftStartUs = 0;
                 if (mElstInitialEmptyEditTicks > 0) {
-                    elstInitialEmptyEditUs = ((long double)mElstInitialEmptyEditTicks * 1000000) /
-                                             mTimescale;
+                    elstInitialEmptyEditUs = rescaleTime(mElstInitialEmptyEditTicks, 1000000,
+                            mTimescale);
+
                     /* Sample's composition time from ctts/stts entries are non-negative(>=0).
                      * Hence, lower bound on seekTimeUs is 0.
                      */
-                    seekTimeUs = std::max(seekTimeUs - elstInitialEmptyEditUs, (int64_t)0);
+                    if (__builtin_sub_overflow(seekTimeUs, elstInitialEmptyEditUs,
+                            &seekTimeUs) || seekTimeUs < 0) {
+                        ALOGW("seekTimeUs:%" PRId64 " would be a bogus value, set to 0",
+                                seekTimeUs);
+                        seekTimeUs = 0;
+                    }
                 }
                 if (mElstShiftStartTicks > 0) {
-                    elstShiftStartUs = ((long double)mElstShiftStartTicks * 1000000) / mTimescale;
-                    seekTimeUs += elstShiftStartUs;
+                    elstShiftStartUs = rescaleTime(mElstShiftStartTicks, 1000000, mTimescale);
+
+                    if (__builtin_add_overflow(seekTimeUs, elstShiftStartUs, &seekTimeUs)) {
+                        ALOGW("seek + elst shift start would be overflow, round to max");
+                        seekTimeUs = std::numeric_limits<int64_t>::max();
+                    }
                 }
                 ALOGV("shifted seekTimeUs:%" PRId64 ", elstInitialEmptyEditUs:%" PRIu64
                       ", elstShiftStartUs:%" PRIu64, seekTimeUs, elstInitialEmptyEditUs,
@@ -6711,16 +6781,26 @@ media_status_t MPEG4Source::fragmentedRead(
         ALOGV("seekTimeUs:%" PRId64, seekTimeUs);
         int64_t elstInitialEmptyEditUs = 0, elstShiftStartUs = 0;
         if (mElstInitialEmptyEditTicks > 0) {
-            elstInitialEmptyEditUs = ((long double)mElstInitialEmptyEditTicks * 1000000) /
-                                     mTimescale;
+            elstInitialEmptyEditUs = rescaleTime(mElstInitialEmptyEditTicks, 1000000,
+                    mTimescale);
+
             /* Sample's composition time from ctts/stts entries are non-negative(>=0).
              * Hence, lower bound on seekTimeUs is 0.
              */
-            seekTimeUs = std::max(seekTimeUs - elstInitialEmptyEditUs, (int64_t)0);
+            if (__builtin_sub_overflow(seekTimeUs, elstInitialEmptyEditUs,
+                    &seekTimeUs) || seekTimeUs < 0) {
+                ALOGW("seekTimeUs:%" PRId64 " would be a bogus value, set to 0",
+                        seekTimeUs);
+                seekTimeUs = 0;
+            }
         }
-        if (mElstShiftStartTicks > 0){
-            elstShiftStartUs = ((long double)mElstShiftStartTicks * 1000000) / mTimescale;
-            seekTimeUs += elstShiftStartUs;
+        if (mElstShiftStartTicks > 0) {
+            elstShiftStartUs = rescaleTime(mElstShiftStartTicks, 1000000, mTimescale);
+
+            if (__builtin_add_overflow(seekTimeUs, elstShiftStartUs, &seekTimeUs)) {
+                ALOGW("seek + elst shift start would be overflow, round to max");
+                seekTimeUs = std::numeric_limits<int64_t>::max();
+            }
         }
         ALOGV("shifted seekTimeUs:%" PRId64 ", elstInitialEmptyEditUs:%" PRIu64
               ", elstShiftStartUs:%" PRIu64, seekTimeUs, elstInitialEmptyEditUs,
