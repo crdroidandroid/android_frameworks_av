@@ -1446,11 +1446,6 @@ void EffectChain::setVolumeForOutput_l(uint32_t left, uint32_t right)
 status_t EffectModule::sendSetAudioDevicesCommand(
         const AudioDeviceTypeAddrVector &devices, uint32_t cmdCode)
 {
-    // for AIDL, use setDevices to pass the AudioDeviceTypeAddrVector
-    if (!EffectConfiguration::isHidl()) {
-        return mEffectInterface->setDevices(devices);
-    }
-
     audio_devices_t deviceType = deviceTypesToBitMask(getAudioDeviceTypes(devices));
     if (deviceType == AUDIO_DEVICE_NONE) {
         return NO_ERROR;
@@ -1462,6 +1457,11 @@ status_t EffectModule::sendSetAudioDevicesCommand(
     }
     status_t status = NO_ERROR;
     if ((mDescriptor.flags & EFFECT_FLAG_DEVICE_MASK) == EFFECT_FLAG_DEVICE_IND) {
+        // for AIDL, use setDevices to pass the AudioDeviceTypeAddrVector
+        if (!EffectConfiguration::isHidl()) {
+            return mEffectInterface->setDevices(devices);
+        }
+
         status_t cmdStatus;
         uint32_t size = sizeof(status_t);
         // FIXME: use audio device types and addresses when the hal interface is ready.
