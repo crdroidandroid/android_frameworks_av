@@ -6192,6 +6192,7 @@ PlaybackThread::mixer_state MixerThread::prepareTracks_l(
                 // cast away constness for this generic API.
                 const_cast<void *>(reinterpret_cast<const void *>(&playbackRate)));
 
+            track->setTeePatchesPlaybackRate(playbackRate);
             /*
              * Select the appropriate output buffer for the track.
              *

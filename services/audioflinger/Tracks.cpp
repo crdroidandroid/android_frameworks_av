@@ -2790,6 +2790,12 @@ void PatchTrack::releaseBuffer(Proxy::Buffer* buffer)
     }
 }
 
+void PatchTrack::setPlaybackRate (const AudioPlaybackRate &playbackRate) {
+    if (mProxy != nullptr) {
+        sp<AudioTrackClientProxy>::cast(mProxy)->setPlaybackRate(playbackRate);
+    }
+}
+
 void PatchTrack::restartIfDisabled()
 {
     if (android_atomic_and(~CBLK_DISABLED, &mCblk->mFlags) & CBLK_DISABLED) {
