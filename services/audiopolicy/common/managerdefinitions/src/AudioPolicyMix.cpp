@@ -312,9 +312,9 @@ void AudioPolicyMixCollection::closeOutput(sp<SwAudioOutputDescriptor> &desc,
         // Restore the policy mix mix output to the first opened output supporting a route to
         // the mix device. This is because the current mix output can be changed to a direct output.
         for (size_t j = 0; j < allOutputs.size(); ++j) {
-            if (allOutputs[i] != desc && !allOutputs[i]->isDuplicated() &&
-                allOutputs[i]->supportedDevices().contains(device)) {
-                policyMix->setOutput(allOutputs[i]);
+            if (allOutputs[j] != desc && !allOutputs[j]->isDuplicated() &&
+                allOutputs[j]->supportedDevices().contains(device)) {
+                policyMix->setOutput(allOutputs[j]);
                 break;
             }
         }
