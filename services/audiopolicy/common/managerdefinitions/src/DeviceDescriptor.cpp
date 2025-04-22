@@ -106,6 +106,10 @@ bool DeviceDescriptor::hasCurrentEncodedFormat() const
     if (mEncodedFormats.empty()) {
         return true;
     }
+    if(device_has_encoding_capability(type()) && !mIsConnected) {
+        ALOGD("%s: mIsConnected is false", __func__);
+        return true;
+    }
 
     return (mCurrentEncodedFormat != AUDIO_FORMAT_DEFAULT);
 }
