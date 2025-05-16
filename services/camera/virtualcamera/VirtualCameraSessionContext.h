@@ -27,6 +27,7 @@
 #include "aidl/android/hardware/camera/device/CaptureRequest.h"
 #include "aidl/android/hardware/camera/device/Stream.h"
 #include "aidl/android/hardware/camera/device/StreamConfiguration.h"
+#include "util/Util.h"
 
 namespace android {
 namespace companion {
@@ -82,6 +83,22 @@ class VirtualCameraSessionContext {
   std::shared_ptr<EglFrameBuffer> fetchOrCreateEglFramebuffer(
       const EGLDisplay eglDisplay, int streamId, int bufferId) EXCLUDES(mLock);
 
+  // Get temporary / scrach EGL framebuffer for the provided EGLDisplday,
+  // streamId and resolution.
+  //
+  // This will lazily create EglFrameBuffer for the provided EGLDisplay if needed,
+  // subsequent calls for same EGLDisplay and resolution
+  // will return same instance of EglFrameBuffer.
+  //
+  // Returns nullptr in case it was not possible to create EglFrameBuffer.
+  std::shared_ptr<EglFrameBuffer> fetchOrCreateScratchEglFramebuffer(
+      const EGLDisplay eglDisplay, int streamId, Resolution resolution)
+      EXCLUDES(mLock);
+
+  // Returns true if there's a cached scratch buffer for provided streamId
+  // and resolution.
+  bool hasCachedScratchEglFramebuffer(int streamId, Resolution resolution) const;
+
   // Returns set of all stream ids managed by this instance.
   std::set<int> getStreamIds() const EXCLUDES(mLock);
 
@@ -89,6 +106,10 @@ class VirtualCameraSessionContext {
   mutable std::mutex mLock;
   // streamId -> VirtualCameraStream mapping.
   std::map<int, std::unique_ptr<VirtualCameraStream>> mStreams GUARDED_BY(mLock);
+
+  // (streamId,resolution) -> scratch EglFrameBuffer mapping.
+  std::map<std::pair<int, Resolution>, std::shared_ptr<EglFrameBuffer>>
+      mScratchFramebuffers GUARDED_BY(mLock);
 };
 
 }  // namespace virtualcamera

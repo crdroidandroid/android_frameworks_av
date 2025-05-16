@@ -32,6 +32,34 @@ using ::aidl::android::hardware::camera::device::Stream;
 using ::aidl::android::hardware::camera::device::StreamBuffer;
 using ::aidl::android::hardware::camera::device::StreamConfiguration;
 
+namespace {
+std::shared_ptr<EglFrameBuffer> allocateTemporaryFramebuffer(
+    EGLDisplay eglDisplay, const Resolution resolution) {
+  const AHardwareBuffer_Desc desc{
+      .width = static_cast<uint32_t>(resolution.width),
+      .height = static_cast<uint32_t>(resolution.height),
+      .layers = 1,
+      .format = AHARDWAREBUFFER_FORMAT_Y8Cb8Cr8_420,
+      .usage = AHARDWAREBUFFER_USAGE_GPU_FRAMEBUFFER |
+               AHARDWAREBUFFER_USAGE_CPU_READ_OFTEN,
+      .rfu0 = 0,
+      .rfu1 = 0};
+
+  AHardwareBuffer* hwBufferPtr;
+  int status = AHardwareBuffer_allocate(&desc, &hwBufferPtr);
+  if (status != NO_ERROR) {
+    ALOGE(
+        "%s: Failed to allocate hardware buffer for temporary framebuffer: %d",
+        __func__, status);
+    return nullptr;
+  }
+
+  return std::make_shared<EglFrameBuffer>(
+      eglDisplay,
+      std::shared_ptr<AHardwareBuffer>(hwBufferPtr, AHardwareBuffer_release));
+}
+}  // namespace
+
 bool VirtualCameraSessionContext::initializeStream(
     const ::aidl::android::hardware::camera::device::Stream& stream) {
   std::lock_guard<std::mutex> lock(mLock);
@@ -47,6 +75,7 @@ bool VirtualCameraSessionContext::initializeStream(
 void VirtualCameraSessionContext::closeAllStreams() {
   std::lock_guard<std::mutex> lock(mLock);
   mStreams.clear();
+  mScratchFramebuffers.clear();
 }
 
 bool VirtualCameraSessionContext::importBuffersFromCaptureRequest(
@@ -118,6 +147,22 @@ void VirtualCameraSessionContext::removeStreamsNotInStreamConfiguration(
       ++it;
     }
   }
+
+  // Remove scratch buffers corresponding to obsolete streams.
+  for (auto it = mScratchFramebuffers.begin();
+       it != mScratchFramebuffers.end();) {
+    auto [streamId, resolution] = it->first;
+    if (newConfigurationStreamIds.find(streamId) ==
+        newConfigurationStreamIds.end()) {
+      ALOGV(
+          "Disposing of %dx%d scratch buffer corresponding to stream %d no "
+          "longer referenced by new configuration.",
+          resolution.width, resolution.height, streamId);
+      it = mScratchFramebuffers.erase(it);
+    } else {
+      ++it;
+    }
+  }
 }
 
 std::optional<Stream> VirtualCameraSessionContext::getStreamConfig(
@@ -158,6 +203,36 @@ VirtualCameraSessionContext::fetchOrCreateEglFramebuffer(
   }
   VirtualCameraStream& stream = *it->second;
   return stream.getEglFrameBuffer(eglDisplay, bufferId);
+}
+
+std::shared_ptr<EglFrameBuffer>
+VirtualCameraSessionContext::fetchOrCreateScratchEglFramebuffer(
+    const EGLDisplay eglDisplay, const int streamId,
+    const Resolution resolution) {
+  std::lock_guard<std::mutex> lock(mLock);
+  auto key = std::make_pair(streamId, resolution);
+  auto it = mScratchFramebuffers.find(key);
+  if (it != mScratchFramebuffers.end()) {
+    return it->second;
+  }
+
+  auto framebuffer = allocateTemporaryFramebuffer(eglDisplay, resolution);
+  if (framebuffer == nullptr) {
+    ALOGE(
+        "%s: Failed to allocate temporary scratch buffer for %dx%d resolution",
+        __func__, resolution.width, resolution.height);
+    return nullptr;
+  }
+
+  mScratchFramebuffers[key] = framebuffer;
+  return framebuffer;
+}
+
+bool VirtualCameraSessionContext::hasCachedScratchEglFramebuffer(
+    int streamId, Resolution resolution) const {
+  std::lock_guard<std::mutex> lock(mLock);
+  return mScratchFramebuffers.find(std::make_pair(streamId, resolution)) !=
+         mScratchFramebuffers.end();
 }
 
 std::set<int> VirtualCameraSessionContext::getStreamIds() const {

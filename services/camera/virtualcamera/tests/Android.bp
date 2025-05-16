@@ -22,6 +22,7 @@ cc_test {
         "VirtualCameraProviderTest.cc",
         "VirtualCameraRenderThreadTest.cc",
         "VirtualCameraServiceTest.cc",
+        "VirtualCameraSessionContextTest.cc",
         "VirtualCameraSessionTest.cc",
     ],
     test_suites: ["device-tests"],
