@@ -134,32 +134,6 @@ NotifyMsg createRequestErrorNotifyMsg(int frameNumber) {
   return msg;
 }
 
-std::shared_ptr<EglFrameBuffer> allocateTemporaryFramebuffer(
-    EGLDisplay eglDisplay, const uint width, const int height) {
-  const AHardwareBuffer_Desc desc{
-      .width = static_cast<uint32_t>(width),
-      .height = static_cast<uint32_t>(height),
-      .layers = 1,
-      .format = AHARDWAREBUFFER_FORMAT_Y8Cb8Cr8_420,
-      .usage = AHARDWAREBUFFER_USAGE_GPU_FRAMEBUFFER |
-               AHARDWAREBUFFER_USAGE_CPU_READ_OFTEN,
-      .rfu0 = 0,
-      .rfu1 = 0};
-
-  AHardwareBuffer* hwBufferPtr;
-  int status = AHardwareBuffer_allocate(&desc, &hwBufferPtr);
-  if (status != NO_ERROR) {
-    ALOGE(
-        "%s: Failed to allocate hardware buffer for temporary framebuffer: %d",
-        __func__, status);
-    return nullptr;
-  }
-
-  return std::make_shared<EglFrameBuffer>(
-      eglDisplay,
-      std::shared_ptr<AHardwareBuffer>(hwBufferPtr, AHardwareBuffer_release));
-}
-
 bool isYuvFormat(const PixelFormat pixelFormat) {
   switch (static_cast<android_pixel_format_t>(pixelFormat)) {
     case HAL_PIXEL_FORMAT_YCBCR_422_I:
@@ -667,7 +641,7 @@ void VirtualCameraRenderThread::flushCaptureRequest(
 }
 
 std::vector<uint8_t> VirtualCameraRenderThread::createThumbnail(
-    const Resolution resolution, const int quality) {
+    const int streamId, const Resolution resolution, const int quality) {
   if (resolution.width == 0 || resolution.height == 0) {
     ALOGV("%s: Skipping thumbnail creation, zero size requested", __func__);
     return {};
@@ -676,8 +650,9 @@ std::vector<uint8_t> VirtualCameraRenderThread::createThumbnail(
   ALOGV("%s: Creating thumbnail with size %d x %d, quality %d", __func__,
         resolution.width, resolution.height, quality);
   Resolution bufferSize = roundTo2DctSize(resolution);
-  std::shared_ptr<EglFrameBuffer> framebuffer = allocateTemporaryFramebuffer(
-      mEglDisplayContext->getEglDisplay(), bufferSize.width, bufferSize.height);
+  std::shared_ptr<EglFrameBuffer> framebuffer =
+      mSessionContext.fetchOrCreateScratchEglFramebuffer(
+          mEglDisplayContext->getEglDisplay(), streamId, bufferSize);
   if (framebuffer == nullptr) {
     ALOGE(
         "Failed to allocate temporary framebuffer for JPEG thumbnail "
@@ -741,8 +716,9 @@ ndk::ScopedAStatus VirtualCameraRenderThread::renderIntoBlobStreamBuffer(
   // size.
   Resolution bufferSize =
       roundTo2DctSize(Resolution(stream->width, stream->height));
-  std::shared_ptr<EglFrameBuffer> framebuffer = allocateTemporaryFramebuffer(
-      mEglDisplayContext->getEglDisplay(), bufferSize.width, bufferSize.height);
+  std::shared_ptr<EglFrameBuffer> framebuffer =
+      mSessionContext.fetchOrCreateScratchEglFramebuffer(
+          mEglDisplayContext->getEglDisplay(), streamId, bufferSize);
   if (framebuffer == nullptr) {
     ALOGE("Failed to allocate temporary framebuffer for JPEG compression");
     return cameraStatus(Status::INTERNAL_ERROR);
@@ -765,7 +741,7 @@ ndk::ScopedAStatus VirtualCameraRenderThread::renderIntoBlobStreamBuffer(
 
   std::vector<uint8_t> app1ExifData =
       createExif(Resolution(stream->width, stream->height), resultMetadata,
-                 createThumbnail(requestSettings.thumbnailResolution,
+                 createThumbnail(streamId, requestSettings.thumbnailResolution,
                                  requestSettings.thumbnailJpegQuality));
 
   unsigned long outBufferSize = stream->bufferSize - sizeof(CameraBlob);

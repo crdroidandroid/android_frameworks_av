@@ -163,7 +163,7 @@ class VirtualCameraRenderThread {
   // The compressed image size is limited by 32KiB.
   // Returns vector with compressed thumbnail if successful,
   // empty vector otherwise.
-  std::vector<uint8_t> createThumbnail(Resolution resolution, int quality);
+  std::vector<uint8_t> createThumbnail(int streamId, Resolution resolution, int quality);
 
   // Render current image to the BLOB buffer.
   // If fence is specified, this function will block until the fence is cleared
