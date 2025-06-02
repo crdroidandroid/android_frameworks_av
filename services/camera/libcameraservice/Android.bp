@@ -216,6 +216,15 @@ cc_library {
         "libmediametrics_headers",
     ],
 
+    shared_libs: [
+    ] + select(soong_config_variable("camera", "needs_client_info_lib"), {
+        "true": ["//hardware/oneplus:vendor.oneplus.hardware.camera@1.0"],
+        default: [],
+    }) + select(soong_config_variable("camera", "needs_client_info_lib_oplus"), {
+        "true": ["vendor.oplus.hardware.cameraMDM@2.0"],
+        default: [],
+    }),
+
     export_shared_lib_headers: [
         "libbinder",
         "libactivitymanager_aidl",
@@ -242,10 +251,10 @@ cc_library {
         any @ flag_val: ["-DCAMERA_PACKAGE_NAME=\"" + flag_val + "\""],
         default: [],
     }) + select(soong_config_variable("camera", "needs_client_info_lib"), {
-        "true": ["-DTARGET_CAMERA_NEEDS_CLIENT_INFO_LIB"],
+        "true": ["-DCAMERA_NEEDS_CLIENT_INFO_LIB"],
         default: [],
     }) + select(soong_config_variable("camera", "needs_client_info_lib_oplus"), {
-        "true": ["-DTARGET_CAMERA_NEEDS_CLIENT_INFO_LIB_OPLUS"],
+        "true": ["-DCAMERA_NEEDS_CLIENT_INFO_LIB_OPLUS"],
         default: [],
     }),
 }
