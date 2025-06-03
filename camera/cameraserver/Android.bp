@@ -52,17 +52,29 @@ cc_binary {
         "android.hardware.camera.device@1.0",
         "android.hardware.camera.device@3.2",
         "android.hardware.camera.device@3.4",
-    ],
+    ] + select(soong_config_variable("camera", "needs_client_info_lib"), {
+        "true": ["//hardware/oneplus:vendor.oneplus.hardware.camera@1.0"],
+        default: [],
+    }) + select(soong_config_variable("camera", "needs_client_info_lib_oplus"), {
+        "true": ["vendor.oplus.hardware.cameraMDM@2.0"],
+        default: [],
+    }),
+
     static_libs: [
         "libcameraservice",
     ],
+
     compile_multilib: "first",
+
     cflags: [
         "-Wall",
         "-Wextra",
         "-Werror",
         "-Wno-unused-parameter",
-    ],
+    ] + select(soong_config_variable("camera", "package_name"), {
+        any @ flag_val: ["-DCAMERA_PACKAGE_NAME=\"" + flag_val + "\""],
+        default: [],
+    }),
 
     init_rc: ["cameraserver.rc"],
 
