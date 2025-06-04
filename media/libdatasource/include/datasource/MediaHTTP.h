@@ -38,6 +38,8 @@ struct MediaHTTP : public HTTPBase {
 
     virtual void disconnect();
 
+    virtual String8 toString();
+
     virtual status_t initCheck() const;
 
     virtual ssize_t readAt(off64_t offset, void *data, size_t size);
@@ -64,6 +66,8 @@ private:
 
     bool mCachedSizeValid;
     off64_t mCachedSize;
+
+    Mutex mLock;
 
     DISALLOW_EVIL_CONSTRUCTORS(MediaHTTP);
 };
