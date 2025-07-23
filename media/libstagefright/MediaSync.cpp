@@ -717,6 +717,13 @@ void MediaSync::onFrameAvailableFromInput() {
 }
 
 void MediaSync::renderOneBufferItem_l(const BufferItem &bufferItem) {
+    if (!mOutput) {
+        // If the output has been abandoned, move on.
+        ALOGD("output is abandoned");
+        onAbandoned_l(false /* isInput */);
+        return;
+    }
+
     IGraphicBufferProducer::QueueBufferInput queueInput(
             bufferItem.mTimestamp,
             bufferItem.mIsAutoTimestamp,
