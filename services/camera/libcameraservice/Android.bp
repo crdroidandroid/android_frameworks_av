@@ -261,6 +261,10 @@ cc_library {
         true: ["-DCAMERA_NEEDS_CLIENT_INFO_LIB_OPLUS"],
         false: [],
         default: [],
+    }) + select(soong_config_variable("camera", "disable_torch_control"), {
+        true: ["-DDISABLE_TORCH_CONTROL"],
+        false: [],
+        default: [],
     }),
 }
 
