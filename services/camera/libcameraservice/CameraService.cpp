@@ -3040,11 +3040,15 @@ Status CameraService::turnOnTorchWithStrengthLevel(const std::string& unresolved
         Mutex::Autolock al(mTorchUidMapMutex);
         updateTorchUidMapLocked(cameraId, uid);
     }
+#ifdef DISABLE_TORCH_CONTROL
+    bool shouldSkipTorchStrengthUpdates = false;
+    status_t err = mFlashlight->setTorchMode(cameraId, (torchStrength > 0) ? 1 : 0);
+#else
     // Check if the current torch strength level is same as the new one.
     bool shouldSkipTorchStrengthUpdates = mCameraProviderManager->shouldSkipTorchStrengthUpdate(
             cameraId, torchStrength);
-
     status_t err = mFlashlight->turnOnTorchWithStrengthLevel(cameraId, torchStrength);
+#endif
 
     if (err != OK) {
         int32_t errorCode;
