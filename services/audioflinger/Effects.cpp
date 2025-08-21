@@ -172,6 +172,9 @@ status_t EffectBase::setEnabled(bool enabled, bool fromHandle)
             getCallback()->onEffectDisable(this);
         }
     }
+    if (status != NO_ERROR) {
+        status = updatePolicyState();
+    }
     return status;
 }
 
@@ -1908,12 +1911,6 @@ Status EffectHandle::enable(int32_t* _aidl_return)
 
     mEnabled = true;
 
-    status_t status = effect->updatePolicyState();
-    if (status != NO_ERROR) {
-        mEnabled = false;
-        RETURN(status);
-    }
-
     effect->checkSuspendOnEffectEnabled(true, false /*threadLocked*/);
 
     // checkSuspendOnEffectEnabled() can suspend this same effect when enabled
@@ -1921,7 +1918,7 @@ Status EffectHandle::enable(int32_t* _aidl_return)
         RETURN(NO_ERROR);
     }
 
-    status = effect->setEnabled(true, true /*fromHandle*/);
+    status_t status = effect->setEnabled(true, true /*fromHandle*/);
     if (status != NO_ERROR) {
         mEnabled = false;
     }
@@ -1944,8 +1941,6 @@ Status EffectHandle::disable(int32_t* _aidl_return)
         RETURN(NO_ERROR);
     }
     mEnabled = false;
-
-    effect->updatePolicyState();
 
     if (effect->suspended()) {
         RETURN(NO_ERROR);
