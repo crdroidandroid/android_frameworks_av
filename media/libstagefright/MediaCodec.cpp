@@ -5589,7 +5589,8 @@ void MediaCodec::onMessageReceived(const sp<AMessage> &msg) {
                     mCryptoLooper = new ALooper();
                     mCryptoLooper->setName("CryptoAsyncLooper");
                     mCryptoLooper->registerHandler(mCryptoAsync);
-                    status_t err = mCryptoLooper->start();
+                    status_t err = mCryptoLooper->start(false /* runOnCallingThread */,
+                        false /* canCallJava */, ANDROID_PRIORITY_AUDIO);
                     if (err != OK) {
                         ALOGE("Crypto Looper failed to start");
                         mCryptoAsync = nullptr;
