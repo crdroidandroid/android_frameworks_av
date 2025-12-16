@@ -22,6 +22,7 @@
 #include "AudioInputDescriptor.h"
 #include "EffectDescriptor.h"
 #include <system/audio_effects/audio_effects_utils.h>
+#include <system/audio_effects/effect_visualizer.h>
 #include <utils/String8.h>
 
 #include <AudioPolicyInterface.h>
@@ -173,6 +174,14 @@ bool EffectDescriptorCollection::isNonOffloadableEffectEnabled(
             ALOGE("%s: non offloadable effect %s, uuid %s, enabled on session %d", __func__,
                   effectDesc->mDesc.name, ToString(effectDesc->mDesc.uuid).c_str(),
                   effectDesc->mSession);
+            return true;
+        }
+        // Also check for Visualizer effects on global session (AUDIO_SESSION_OUTPUT_MIX = 0)
+        // Visualizer needs audio to go through the mixer to capture it, so block offload
+        if (effectDesc->mEnabled &&
+            effectDesc->mSession == AUDIO_SESSION_OUTPUT_MIX &&
+            memcmp(&effectDesc->mDesc.type, SL_IID_VISUALIZATION, sizeof(effect_uuid_t)) == 0) {
+            ALOGV("%s: visualizer effect enabled on global session, blocking offload", __func__);
             return true;
         }
     }
