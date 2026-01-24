@@ -6006,16 +6006,16 @@ PlaybackThread::mixer_state MixerThread::prepareTracks_l(
 
             if (com_android_media_audio_ring_my_car()) {
                 if (!track->canBypassMute()
-                    && (track->isPlaybackRestricted() || track->getPortMute())) {
+                    && (track->isPlaybackRestricted() || track->getPortMute() || track->isAppMuted())) {
                     v = 0;
                 } else {
-                    v = masterVolume * track->getPortVolume();
+                    v = masterVolume * track->getPortVolume() * track->getAppVolume();
                 }
             } else {
-                if (track->isPlaybackRestricted() || track->getPortMute()) {
+                if (track->isPlaybackRestricted() || track->getPortMute() || track->isAppMuted()) {
                     v = 0;
                 } else {
-                    v = masterVolume * track->getPortVolume();
+                    v = masterVolume * track->getPortVolume() * track->getAppVolume();
                 }
             }
 
