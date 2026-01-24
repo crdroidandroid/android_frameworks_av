@@ -951,6 +951,23 @@ Track::Track(
     ALOGV_IF(sharedBuffer != 0, "%s(%d): sharedBuffer: %p, size: %zu",
             __func__, mId, sharedBuffer->unsecurePointer(), sharedBuffer->size());
 
+    /* get package name */
+    if (attributionSource.packageName.has_value() && !attributionSource.packageName.value().empty()) {
+        mPackageName = String8(String16(attributionSource.packageName.value().c_str()));
+    } else {
+        const auto& provider = thread->afThreadCallback()->getPermissionProvider();
+        const auto res = provider.getPackagesForUid(attributionSource.uid);
+        if (res.ok() && !res->empty()) {
+            mPackageName = String8(String16(res->at(0).c_str()));
+        } else {
+            mPackageName = "";
+        }
+    }
+
+    /* init app volume */
+    mAppMuted = false;
+    mAppVolume = 1.0f;
+
     if (mCblk == NULL) {
         return;
     }
@@ -1802,6 +1819,16 @@ void Track::setFinalVolume(float volumeLeft, float volumeRight)
         mLogForceVolumeUpdate = false;
         mTrackMetrics.logVolume(mFinalVolume);
     }
+}
+
+void Track::setAppVolume(float volume)
+{
+    mAppVolume = volume;
+}
+
+void Track::setAppMute(bool val)
+{
+    mAppMuted = val;
 }
 
 void Track::copyMetadataTo(MetadataInserter& backInserter) const

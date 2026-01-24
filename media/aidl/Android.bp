@@ -43,6 +43,7 @@ aidl_interface {
     double_loadable: true,
     local_include_dir: ".",
     srcs: [
+        "android/media/AppVolumeData.aidl",
         "android/media/IAudioManagerNative.aidl",
         "android/media/InterpolatorConfig.aidl",
         "android/media/InterpolatorType.aidl",
