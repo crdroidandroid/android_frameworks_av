@@ -544,6 +544,10 @@ public:
 
     // Return the asynchronous signal wait time.
     virtual int64_t computeWaitTimeNs_l() const REQUIRES(mutex()) = 0;
+    virtual status_t setAppVolume(const String8& packageName, const float value) = 0;
+    virtual status_t setAppMute(const String8& packageName, const bool muted) = 0;
+    virtual void listAppVolumes(std::set<media::AppVolume> &container) = 0;
+
     // returns true if the track is allowed to be added to the thread.
     virtual bool isTrackAllowed_l(
             audio_channel_mask_t channelMask, audio_format_t format, audio_session_t sessionId,
