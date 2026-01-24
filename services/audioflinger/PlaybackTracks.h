@@ -162,12 +162,11 @@ public:
                             *right = mFinalVolumeRight;
     }
 
-    void setAppVolume(float volume) final;
-    float getAppVolume() const { return mAppVolume; };
-    void setAppMute(bool val) final;
-    bool isAppMuted() { return mAppMuted; };
-
-    String8 getPackageName() const { return mPackageName; }
+    void setAppVolume(float volume) override { mAppVolume = volume; }
+    float getAppVolume() const override { return mAppVolume; }
+    void setAppMute(bool val) override { mAppMuted = val; }
+    bool isAppMuted() const override { return mAppMuted; }
+    String8 getPackageName() const override { return mPackageName; }
 
     using SourceMetadatas = std::vector<playback_track_metadata_v7_t>;
     using MetadataInserter = std::back_insert_iterator<SourceMetadatas>;
@@ -417,8 +416,8 @@ private:
                                           // volume
     float               mFinalVolumeRight; // combine master volume, stream type volume and track
                                            // volume
-    float               mAppVolume;  // volume control for separate processes
-    bool                mAppMuted;
+    float               mAppVolume = 1.0f;  // volume control for separate processes
+    bool                mAppMuted = false;
     sp<AudioTrackServerProxy>  mAudioTrackServerProxy;
     bool                mResumeToStopping; // track was paused in stopping state.
     bool                mFlushHwPending; // track requests for thread flush

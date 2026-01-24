@@ -207,6 +207,12 @@ public:
     virtual bool isPatchTrack() const = 0;
     virtual bool isExternalTrack() const = 0;
 
+    virtual void setAppVolume(float volume) { (void)volume; }
+    virtual void setAppMute(bool val) { (void)val; }
+    virtual float getAppVolume() const { return 1.0f; }
+    virtual bool isAppMuted() const { return false; }
+    virtual String8 getPackageName() const { return String8(); }
+
     virtual void invalidate() = 0;
     virtual bool isInvalid() const = 0;
 
@@ -525,11 +531,11 @@ public:
     virtual float getFinalVolume() const = 0;
     virtual void getFinalVolume(float* left, float* right) const = 0;
 
-    virtual void setAppVolume(float volume) = 0;
-    virtual float getAppVolume() const = 0;
-    virtual void setAppMute(bool val) = 0;
-    virtual bool isAppMuted() = 0;
-    virtual String8 getPackageName() const = 0;
+    void setAppVolume(float volume) override { IAfTrackBase::setAppVolume(volume); }
+    float getAppVolume() const override { return IAfTrackBase::getAppVolume(); }
+    void setAppMute(bool val) override { IAfTrackBase::setAppMute(val); }
+    bool isAppMuted() const override { return IAfTrackBase::isAppMuted(); }
+    String8 getPackageName() const override { return IAfTrackBase::getPackageName(); }
 
     using SourceMetadatas = std::vector<playback_track_metadata_v7_t>;
     using MetadataInserter = std::back_insert_iterator<SourceMetadatas>;
