@@ -101,6 +101,7 @@ using com::android::media::permission::IPermissionProvider;
 using com::android::media::permission::NativePermissionController;
 using com::android::media::permission::PermissionEnum;
 using com::android::media::permission::PermissionEnum::MODIFY_AUDIO_SETTINGS;
+using com::android::media::permission::PermissionEnum::MODIFY_AUDIO_ROUTING;
 using com::android::media::permission::ValidatedAttributionSourceState;
 
 static const AudioHalVersionInfo kMaxAAudioPropertyDeviceHalVersion =
@@ -5169,6 +5170,24 @@ status_t AudioFlinger::onTransactWrapper(TransactionCode code,
                 }
                 // Fail silently in these cases.
                 return OK;
+            }
+        } break;
+        default:
+            break;
+    }
+
+    // make sure the following transactions require MODIFY_AUDIO_ROUTING permission
+    switch (code) {
+        case TransactionCode::SET_APP_VOLUME:
+        case TransactionCode::SET_APP_MUTE: {
+            const uid_t callingUid = IPCThreadState::self()->getCallingUid();
+            const auto res = getPermissionProvider().checkPermission(MODIFY_AUDIO_ROUTING, callingUid);
+            if (!res.ok() || !res.value()) {
+                ALOGW("%s: transaction %d received from PID %d UID %d does not have "
+                      "MODIFY_AUDIO_ROUTING permission",
+                      __func__, static_cast<int>(code), IPCThreadState::self()->getCallingPid(),
+                      callingUid);
+                return INVALID_OPERATION;
             }
         } break;
         default:
