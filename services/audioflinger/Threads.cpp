@@ -2261,7 +2261,7 @@ void PlaybackThread::listAppVolumes(std::set<media::AppVolume> &container)
             av.packageName = track->getPackageName();
             av.muted = track->isAppMuted();
             av.volume = track->getAppVolume();
-            av.active = mActiveTracks.indexOf(track) >= 0;
+            av.active = mActiveTracks.count(track) > 0;
             container.insert(av);
         }
     }

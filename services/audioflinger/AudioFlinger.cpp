@@ -2029,53 +2029,62 @@ status_t AudioFlinger::listAppVolumes(std::vector<media::AppVolume> *vols)
 {
     std::set<media::AppVolume> volSet;
     audio_utils::lock_guard _l(mutex());
-    for (size_t i = 0; i < mPlaybackThreads.size(); i++) {
-        sp<IAfPlaybackThread> thread = mPlaybackThreads.valueAt(i);
-        thread->listAppVolumes(volSet);
+    
+    for (auto& [ioHandle, thread] : mPlaybackThreads) {
+        if (thread != nullptr) {
+            thread->listAppVolumes(volSet);
+        }
     }
 
     vols->insert(vols->begin(), volSet.begin(), volSet.end());
-
     return NO_ERROR;
 }
 
 status_t AudioFlinger::setAppVolume(const String8& packageName, const float value)
 {
     audio_utils::lock_guard _l(mutex());
-    for (size_t i = 0; i < mPlaybackThreads.size(); i++) {
-        sp<IAfPlaybackThread> t = mPlaybackThreads.valueAt(i);
-        t->setAppVolume(packageName, value);
+
+    for (auto& [ioHandle, thread] : mPlaybackThreads) {
+        if (thread != nullptr) {
+            thread->setAppVolume(packageName, value);
+        }
     }
 
-    if (mAppVolumeConfigs.find(packageName) == mAppVolumeConfigs.end()) {
+    auto it = mAppVolumeConfigs.find(packageName);
+    if (it == mAppVolumeConfigs.end()) {
         media::AppVolume vol;
         vol.packageName = packageName;
         vol.volume = value;
         vol.muted = false;
         mAppVolumeConfigs[packageName] = vol;
     } else {
-        mAppVolumeConfigs[packageName].volume = value;
+        it->second.volume = value;
     }
+
     return NO_ERROR;
 }
 
 status_t AudioFlinger::setAppMute(const String8& packageName, const bool value)
 {
     audio_utils::lock_guard _l(mutex());
-    for (size_t i = 0; i < mPlaybackThreads.size(); i++) {
-        sp<IAfPlaybackThread> t = mPlaybackThreads.valueAt(i);
-        t->setAppMute(packageName, value);
+
+    for (auto& [ioHandle, thread] : mPlaybackThreads) {
+        if (thread != nullptr) {
+            thread->setAppMute(packageName, value);
+        }
     }
 
-    if (mAppVolumeConfigs.find(packageName) == mAppVolumeConfigs.end()) {
+    auto it = mAppVolumeConfigs.find(packageName);
+    if (it == mAppVolumeConfigs.end()) {
         media::AppVolume vol;
         vol.packageName = packageName;
         vol.volume = 1.0f;
         vol.muted = value;
         mAppVolumeConfigs[packageName] = vol;
     } else {
-        mAppVolumeConfigs[packageName].muted = value;
+        it->second.muted = value;
     }
+
     return NO_ERROR;
 }
 
