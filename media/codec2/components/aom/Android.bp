@@ -22,6 +22,10 @@ cc_library {
 
     srcs: ["C2SoftAomDec.cpp"],
     static_libs: ["libaom"],
+
+    sanitize: {
+        cfi: false,
+    },
 }
 
 cc_library {
@@ -42,4 +46,7 @@ cc_library {
         "com.android.media.swcodec",
     ],
 
+    sanitize: {
+        cfi: false,
+    },
 }
