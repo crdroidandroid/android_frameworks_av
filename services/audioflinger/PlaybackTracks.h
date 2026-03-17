@@ -156,13 +156,19 @@ public:
     sp<media::VolumeShaper::State> getVolumeShaperState(int id) const final;
     sp<media::VolumeHandler> getVolumeHandler() const final{ return mVolumeHandler; }
     /** Set the computed normalized final volume of the track.
-     * !masterMute * masterVolume * streamVolume * averageLRVolume */
+     * !masterMute * !appMuted * masterVolume * streamVolume * averageLRVolume * appVolume */
     void setFinalVolume(float volumeLeft, float volumeRight) final;
     float getFinalVolume() const final { return mFinalVolume; }
     void getFinalVolume(float* left, float* right) const final {
                             *left = mFinalVolumeLeft;
                             *right = mFinalVolumeRight;
     }
+
+    void setAppVolume(float volume) override { mAppVolume = volume; }
+    float getAppVolume() const override { return mAppVolume; }
+    void setAppMute(bool val) override { mAppMuted = val; }
+    bool isAppMuted() const override { return mAppMuted; }
+    String8 getPackageName() const override { return mPackageName; }
 
     using SourceMetadatas = std::vector<playback_track_metadata_v7_t>;
     using MetadataInserter = std::back_insert_iterator<SourceMetadatas>;
@@ -384,6 +390,8 @@ private:
         for (auto& tp : mTeePatches) { f(tp.patchTrack); }
     };
 
+    String8             mPackageName;
+
     void                populateUsageAndContentTypeFromStreamType();
 
     size_t              mPresentationCompleteFrames = 0; // (Used for Mixed tracks)
@@ -411,6 +419,8 @@ private:
                                           // volume
     float               mFinalVolumeRight; // combine master volume, stream type volume and track
                                            // volume
+    float               mAppVolume = 1.0f;
+    bool                mAppMuted = false;
     sp<AudioTrackServerProxy>  mAudioTrackServerProxy;
     bool                mResumeToStopping; // track was paused in stopping state.
     bool                mFlushHwPending; // track requests for thread flush

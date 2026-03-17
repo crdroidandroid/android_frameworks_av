@@ -54,6 +54,8 @@
 #include <binder/PersistableBundle.h>
 #include <com_android_media_audio.h>
 #include <com_android_media_audioserver.h>
+#include <set>
+#include "AppVolumeHelper.h"
 #include <cutils/bitops.h>
 #include <cutils/properties.h>
 #include <fastpath/AutoPark.h>
@@ -2949,6 +2951,49 @@ sp<IAfTrack> PlaybackThread::createTrack_l(
 Exit:
     *status = lStatus;
     return track;
+}
+
+void PlaybackThread::listAppVolumes(std::set<media::AppVolume> &container)
+{
+    audio_utils::lock_guard _l(mutex());
+
+    for (const sp<IAfTrackBase>& track : mTracks) {
+        if (!track->getPackageName().empty()) {
+            media::AppVolume av;
+            av.packageName = track->getPackageName();
+            av.muted = track->isAppMuted();
+            av.volume = track->getAppVolume();
+            av.active = mActiveTracks.count(track) > 0;
+
+            container.insert(av);
+        }
+    }
+}
+
+status_t PlaybackThread::setAppVolume(const String8& packageName, const float value)
+{
+    audio_utils::lock_guard _l(mutex());
+
+    for (const sp<IAfTrackBase>& track : mTracks) {
+        if (packageName == track->getPackageName()) {
+            track->setAppVolume(value);
+        }
+    }
+
+    return NO_ERROR;
+}
+
+status_t PlaybackThread::setAppMute(const String8& packageName, const bool value)
+{
+    audio_utils::lock_guard _l(mutex());
+
+    for (const sp<IAfTrackBase>& track : mTracks) {
+        if (packageName == track->getPackageName()) {
+            track->setAppMute(value);
+        }
+    }
+
+    return NO_ERROR;
 }
 
 uint32_t PlaybackThread::correctLatency_l(uint32_t latency) const
@@ -5881,6 +5926,7 @@ PlaybackThread::mixer_state MixerThread::prepareTracks_l(
                         volume = masterVolume * track->getPortVolume();
                     }
                 }
+                volume = audioflinger::appVolumeAdjust(volume, track);
 
                 const auto amn = mAfThreadCallback->getAudioManagerNative();
                 if (amn) {
@@ -6094,6 +6140,7 @@ PlaybackThread::mixer_state MixerThread::prepareTracks_l(
                     v = masterVolume * track->getPortVolume();
                 }
             }
+            v = audioflinger::appVolumeAdjust(v, track);
 
             handleVoipVolume_l(&v);
             const auto amn = mAfThreadCallback->getAudioManagerNative();
@@ -6898,6 +6945,8 @@ void DirectOutputThread::processVolume_l(const sp<IAfTrack>& track, bool lastTra
             right *= mMasterBalanceRight;
         }
     }
+    left = audioflinger::appVolumeAdjust(left, track);
+    right = audioflinger::appVolumeAdjust(right, track);
     if (amn) {
         bool portMute = false;
         bool portVolumeMute = false;

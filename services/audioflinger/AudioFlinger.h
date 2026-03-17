@@ -18,6 +18,7 @@
 #pragma once
 
 // Classes and interfaces directly used.
+#include "AppVolumeHelper.h"
 #include "Client.h"
 #include "DeviceEffectManager.h"
 #include "EffectConfiguration.h"
@@ -463,6 +464,14 @@ private:
     int64_t getStartupFinishedTime() {
         return mStartupFinishedTime.load(std::memory_order_acquire);
     }
+
+public:
+    status_t setAppVolume(const String8& packageName, const float value);
+    status_t setAppMute(const String8& packageName, const bool value);
+    status_t listAppVolumes(std::vector<media::AppVolume> *vols);
+
+private:
+    audioflinger::AppVolumeHelper mAppVolumeHelper;
 
     status_t openMmapStreamImpl(bool isOutput,
                                 const audio_attributes_t& attr,
