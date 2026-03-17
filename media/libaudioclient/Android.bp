@@ -458,6 +458,7 @@ aidl_interface {
     host_supported: true,
     vendor_available: true,
     srcs: [
+        "aidl/android/media/AppVolumeData.aidl",
         "aidl/android/media/CreateEffectRequest.aidl",
         "aidl/android/media/CreateEffectResponse.aidl",
         "aidl/android/media/CreateRecordRequest.aidl",

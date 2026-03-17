@@ -960,6 +960,11 @@ Track::Track(
     ALOGV_IF(sharedBuffer != 0, "%s(%d): sharedBuffer: %p, size: %zu",
             __func__, mId, sharedBuffer->unsecurePointer(), sharedBuffer->size());
 
+    if (attributionSource.packageName.has_value()
+            && !attributionSource.packageName.value().empty()) {
+        mPackageName = String8(attributionSource.packageName.value().c_str());
+    }
+
     if (mCblk == NULL) {
         return;
     }
