@@ -99,6 +99,7 @@ PlanesLockGuard::PlanesLockGuard(std::shared_ptr<AHardwareBuffer> hwBuffer,
   if (rawFence >= 0) {
     close(rawFence);
   }
+  mHwBuffer = hwBuffer;
 }
 
 PlanesLockGuard::~PlanesLockGuard() {
