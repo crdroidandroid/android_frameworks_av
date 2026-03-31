@@ -1144,6 +1144,13 @@ void NuPlayer::onMessageReceived(const sp<AMessage> &msg) {
                 sp<AMessage> inputFormat =
                         mSource->getFormat(false /* audio */);
 
+                int32_t sarWidth = 0, sarHeight = 0;
+                if (format->findInt32("sar-width", &sarWidth) && format->findInt32("sar-height", &sarHeight) && sarWidth > 0
+                        && sarHeight > 0) {
+                    inputFormat->setInt32("sar-width", sarWidth);
+                    inputFormat->setInt32("sar-height", sarHeight);
+                }
+
                 setVideoScalingMode(mVideoScalingMode);
                 updateVideoSize(inputFormat, format);
             } else if (what == DecoderBase::kWhatShutdownCompleted) {
