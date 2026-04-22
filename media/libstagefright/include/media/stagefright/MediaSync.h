@@ -151,7 +151,7 @@ private:
 #if COM_ANDROID_GRAPHICS_LIBGUI_FLAGS(WB_MEDIA_MIGRATION)
     class InputListener : public BufferItemConsumer::FrameAvailableListener {
 #else
-    class InputListener : public IConsumerListener, public IBinder::DeathRecipient {
+    class InputListener : public IConsumerListener {
 #endif
       public:
         InputListener(const sp<MediaSync> &sync);
@@ -171,9 +171,6 @@ private:
         // From IConsumerListener
         // We don't care about sideband streams, since we won't relay them.
         virtual void onSidebandStreamChanged();
-
-        // From IBinder::DeathRecipient
-        virtual void binderDied(const wp<IBinder> &who);
 #endif
 
       private:
