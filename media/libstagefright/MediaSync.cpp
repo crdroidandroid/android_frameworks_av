@@ -928,12 +928,6 @@ void MediaSync::InputListener::onFrameAvailable(const BufferItem &/* item */) {
 void MediaSync::InputListener::onSidebandStreamChanged() {
     ALOGE("onSidebandStreamChanged: got sideband stream unexpectedly.");
 }
-
-
-void MediaSync::InputListener::binderDied(const wp<IBinder> &/* who */) {
-    Mutex::Autolock lock(mSync->mMutex);
-    mSync->onAbandoned_l(true /* isInput */);
-}
 #endif
 
 MediaSync::OutputListener::OutputListener(const sp<MediaSync> &sync,
