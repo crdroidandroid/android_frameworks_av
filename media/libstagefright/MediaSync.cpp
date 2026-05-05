@@ -873,7 +873,10 @@ void MediaSync::onAbandoned_l(bool isInput) {
     if (!mIsAbandoned) {
         if (isInput) {
             mOutput->disconnect(NATIVE_WINDOW_API_MEDIA);
-        } else {
+        } else if (mInput != nullptr) {
+            // mInput is only assigned in createInputSurface(); guard against
+            // the case where the process hosting the output Surface's
+            // BnGraphicBufferProducer dies before that's called.
 #if COM_ANDROID_GRAPHICS_LIBGUI_FLAGS(WB_MEDIA_MIGRATION)
             mInput->abandon();
 #else
