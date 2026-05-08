@@ -2251,7 +2251,12 @@ status_t CCodecBufferChannel::start(
         if (!buffersBoundToCodec) {
             inputFormat->setInt32(KEY_NUM_SLOTS, numInputSlots);
         }
-        bool conforming = (apiFeatures & API_SAME_INPUT_BUFFER);
+        // For sessions where buffers are not bound to CCodec (e.g., thumbnail /
+        // no-surface decode), the API_SAME_INPUT_BUFFER behaviour (SlotInputBuffers)
+        // is incompatible with the single-frame decode pattern. Even if the codec
+        // advertises this capability, treat such sessions as non-conforming so that
+        // the normal (non-slot) input buffer path is used.
+        bool conforming = buffersBoundToCodec && (apiFeatures & API_SAME_INPUT_BUFFER);
         // For encrypted content, framework decrypts source buffer (ashmem) into
         // C2Buffers. Thus non-conforming codecs can process these.
         // For graphic buffer, framework uses graphic buffers directly.
