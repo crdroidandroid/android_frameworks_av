@@ -292,6 +292,11 @@ VirtualCameraRenderThread::VirtualCameraRenderThread(
       mInputSurfaceSize(inputSurfaceSize),
       mReportedSensorSize(reportedSensorSize),
       mSessionContext(sessionContext),
+      mLastAcquisitionTimestampNanoseconds(
+          std::chrono::duration_cast<std::chrono::nanoseconds>(
+              std::chrono::steady_clock::now().time_since_epoch())
+              .count()),
+      mLastSurfaceTimestampNanoseconds(0),
       mInputSurfaceFuture(mInputSurfacePromise.get_future()) {
 }
 
