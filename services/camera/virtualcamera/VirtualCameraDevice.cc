@@ -163,7 +163,7 @@ std::optional<Resolution> getMaxResolution(
   auto itMax = std::max_element(configs.begin(), configs.end(),
                                 [](const SupportedStreamConfiguration& a,
                                    const SupportedStreamConfiguration& b) {
-                                  return a.width * b.height < a.width * b.height;
+                                  return a.width * a.height < b.width * b.height;
                                 });
   if (itMax == configs.end()) {
     ALOGE(
