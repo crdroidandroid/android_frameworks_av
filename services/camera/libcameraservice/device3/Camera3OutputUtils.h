@@ -96,6 +96,25 @@ namespace camera3 {
             ERROR_BUF_STRATEGY errorBufStrategy = ERROR_BUF_RETURN,
             const TransformationMap &transform = TransformationMap{});
 
+    // OxygenOS-compatible overload for libcsextimpl.so
+    void collectReturnableOutputBuffers(
+        bool useHalBufManager,
+        const std::set<int32_t> &halBufferManagedStreams,
+        sp<NotificationListener> listener,
+        const camera_stream_buffer_t *outputBuffers,
+        size_t numBuffers,
+        nsecs_t timestamp,
+        nsecs_t readoutTimestamp,
+        bool requested,
+        nsecs_t requestTimeNs,
+        SessionStatsBuilder& sessionStatsBuilder,
+        std::vector<BufferToReturn> *returnableBuffers,
+        bool timestampIncreasing,
+        const std::unordered_map<int32_t, std::vector<uint64_t>> &outputSurfaces,
+        const CaptureResultExtras &resultExtras,
+        ERROR_BUF_STRATEGY errorBufStrategy,
+        int extraParam);
+
     // helper function to collect the output buffers ready to be
     // returned to output streams, and to remove these buffers from
     // the inflight request's pending buffers vector.  Does not make
