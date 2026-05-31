@@ -109,6 +109,9 @@ public:
     static const int CAMERA_STATE_ACTIVE;
     static const int CAMERA_STATE_IDLE;
     static const int CAMERA_STATE_CLOSED;
+    static const int CAMERA_STATE_EXCEPTION;
+    static const int CAMERA_STATE_SESSION_CONFIGURED;
+    static const int CAMERA_STATE_FIRST_FRAME_ARRIVED;
 
     /**
      * Values for notifyCameraState facing

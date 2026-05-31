@@ -1057,6 +1057,38 @@ void collectAndRemovePendingOutputBuffers(bool useHalBufManager,
     }
 }
 
+void collectReturnableOutputBuffers(
+        bool useHalBufManager,
+        const std::set<int32_t>& halBufferManagedStreams,
+        sp<NotificationListener> listener,
+        const camera_stream_buffer_t* outputBuffers,
+        size_t numBuffers,
+        int64_t timestamp,
+        int64_t readoutTimestamp,
+        bool requested,
+        int64_t requestTimeNs,
+        SessionStatsBuilder& sessionStatsBuilder,
+        std::vector<BufferToReturn>* returnableBuffers,
+        bool timestampIncreasing,
+        const std::unordered_map<int32_t, std::vector<uint64_t>>& outputSurfaces,
+        const CaptureResultExtras& resultExtras,
+        ERROR_BUF_STRATEGY errorBufStrategy,
+        int /*extraParam*/) {
+
+    // Convert the OxygenOS map (uint64_t) to AOSP map (size_t)
+    std::unordered_map<int32_t, std::vector<size_t>> surfacesSizeT;
+    for (const auto& pair : outputSurfaces) {
+        surfacesSizeT[pair.first].assign(pair.second.begin(), pair.second.end());
+    }
+
+    // Call the AOSP overload (which takes sp<NotificationListener> by value)
+    collectReturnableOutputBuffers(useHalBufManager, halBufferManagedStreams, listener,
+            outputBuffers, numBuffers, timestamp, readoutTimestamp, requested, requestTimeNs,
+            sessionStatsBuilder, returnableBuffers, timestampIncreasing, surfacesSizeT,
+            resultExtras, errorBufStrategy, TransformationMap{});
+}
+
+
 void notifyShutter(CaptureOutputStates& states, const camera_shutter_msg_t &msg) {
     ATRACE_CALL();
     ssize_t idx;
