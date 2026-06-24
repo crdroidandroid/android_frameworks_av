@@ -37,6 +37,11 @@ AWakeLock::AWakeLock() :
     mDeathRecipient(new PMDeathRecipient(this)){}
 
 AWakeLock::~AWakeLock() {
+    // Clear the back-pointer in PMDeathRecipient first to prevent a
+    // use-after-free race: if binderDied() fires on a binder thread after
+    // this object is destroyed, promote() will return NULL and the callback
+    // will be safely ignored.
+    mDeathRecipient->clearWakeLock();
     if (mPowerManager != NULL) {
         sp<IBinder> binder = IInterface::asBinder(mPowerManager);
         binder->unlinkToDeath(mDeathRecipient);
@@ -107,12 +112,15 @@ void AWakeLock::release(bool force) {
 
 void AWakeLock::clearPowerManager() {
     release(true);
-    mPowerManager.clear();
+    if (mPowerManager != NULL) {
+        mPowerManager.clear();
+    }
 }
 
 void AWakeLock::PMDeathRecipient::binderDied(const wp<IBinder>& who __unused) {
-    if (mWakeLock != NULL) {
-        mWakeLock->clearPowerManager();
+    sp<AWakeLock> wakeLock = mWakeLock.promote();
+    if (wakeLock != NULL) {
+        wakeLock->clearPowerManager();
     }
 }
 
