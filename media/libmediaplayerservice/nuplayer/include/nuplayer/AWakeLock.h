@@ -49,11 +49,14 @@ private:
         // IBinder::DeathRecipient
         virtual void binderDied(const wp<IBinder> &who);
 
+        // Called by AWakeLock destructor to prevent use-after-free in binderDied
+        void clearWakeLock() { mWakeLock.clear(); }
+
     private:
         PMDeathRecipient(const PMDeathRecipient&);
         PMDeathRecipient& operator= (const PMDeathRecipient&);
 
-        AWakeLock *mWakeLock;
+        wp<AWakeLock> mWakeLock;
     };
 
     const sp<PMDeathRecipient> mDeathRecipient;
