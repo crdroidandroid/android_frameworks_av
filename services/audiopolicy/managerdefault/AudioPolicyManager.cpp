@@ -271,7 +271,6 @@ status_t AudioPolicyManager::setDeviceConnectionStateInt(const sp<DeviceDescript
 
             // Populate encapsulation information when a output device is connected.
             device->setEncapsulationInfoFromHal(mpClientInterface);
-            device->setDeviceConnectState(true);
 
             // outputs should never be empty here
             ALOG_ASSERT(outputs.size() != 0, "setDeviceConnectionState():"
@@ -304,7 +303,6 @@ status_t AudioPolicyManager::setDeviceConnectionStateInt(const sp<DeviceDescript
 
             // Reset active device codec
             device->setEncodedFormat(AUDIO_FORMAT_DEFAULT);
-            device->setDeviceConnectState(false);
 
             // remove device from mReportedFormatsMap cache
             mReportedFormatsMap.erase(device);
