@@ -58,10 +58,6 @@ public:
         mCurrentEncodedFormat = format;
     }
 
-    void setDeviceConnectState(bool connected){
-        mIsConnected = connected;
-    }
-
     bool equals(const sp<DeviceDescriptor>& other) const;
 
     bool hasCurrentEncodedFormat() const;
@@ -111,7 +107,6 @@ private:
     }
 
     std::string mTagName; // Unique human readable identifier for a device port found in conf file.
-    bool                mIsConnected = false;
     audio_format_t      mCurrentEncodedFormat;
     bool                mIsDynamic = false;
     std::string         mDeclaredAddress; // Original device address
