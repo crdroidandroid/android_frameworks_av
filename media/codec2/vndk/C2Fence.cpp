@@ -472,6 +472,10 @@ std::vector<int> ExtractFdsFromCodec2SyncFence(const C2Fence& fence) {
     return retFds;
 }
 
+C2Fence _C2FenceFactory::CreateSyncFence(int fenceFd) {
+    return CreateSyncFence(fenceFd, true);
+}
+
 C2Fence _C2FenceFactory::CreateSyncFence(int fenceFd, bool validate) {
     std::shared_ptr<C2Fence::Impl> p;
     if (fenceFd >= 0) {
@@ -812,4 +816,3 @@ C2Fence _C2FenceFactory::CreateFromNativeHandle(
     }
     return C2Fence(p);
 }
-
