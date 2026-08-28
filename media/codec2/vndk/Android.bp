@@ -7,6 +7,31 @@ package {
     default_applicable_licenses: ["frameworks_av_license"],
 }
 
+
+// Device-specific Codec2 compatibility flags.
+soong_config_module_type {
+    name: "codec2_compat_cc_defaults",
+    module_type: "cc_defaults",
+    config_namespace: "codec2_compat",
+    bool_variables: [
+        "legacy_dolby_igba",
+    ],
+    properties: [
+        "cflags",
+    ],
+}
+
+codec2_compat_cc_defaults {
+    name: "codec2_compat_defaults",
+    soong_config_variables: {
+        legacy_dolby_igba: {
+            cflags: [
+                "-DCODEC2_LEGACY_DOLBY_IGBA",
+            ],
+        },
+    },
+}
+
 cc_library_headers {
     name: "libcodec2_internal",
 
@@ -55,6 +80,7 @@ cc_library {
     defaults: [
         "aconfig_lib_cc_static_link.defaults",
         "libcodec2_hal_selection",
+        "codec2_compat_defaults",
     ],
 
     srcs: [

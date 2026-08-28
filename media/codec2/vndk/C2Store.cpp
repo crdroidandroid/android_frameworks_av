@@ -41,6 +41,9 @@
 #endif
 
 #include <dlfcn.h>
+#ifdef CODEC2_LEGACY_DOLBY_IGBA
+#include <cstring>
+#endif
 #include <unistd.h> // getpagesize
 
 #include <map>
@@ -536,6 +539,13 @@ static C2PooledBlockPool::BufferPoolVer GetBufferPoolVer() {
     return sVer;
 }
 
+#ifdef CODEC2_LEGACY_DOLBY_IGBA
+static bool IsDolbyVisionService() {
+    const char* name = getprogname();
+    return name && strcmp(name, "vendor.dolby.media.c2-service-vision") == 0;
+}
+#endif
+
 class _C2BlockPoolCache {
 public:
     _C2BlockPoolCache() : mBlockPoolSeqId(C2BlockPool::PLATFORM_START + 1) {
@@ -632,9 +642,19 @@ private:
                            components.begin(), components.end());
                 }
                 break;
-            case C2PlatformAllocatorStore::IGBA:
-                res = allocatorStore->fetchAllocator(
-                        C2PlatformAllocatorStore::IGBA, &allocator);
+            case C2PlatformAllocatorStore::IGBA: {
+                C2PlatformAllocatorStore::id_t backingAllocatorId =
+                        C2PlatformAllocatorStore::IGBA;
+
+#ifdef CODEC2_LEGACY_DOLBY_IGBA
+                const bool dolby = IsDolbyVisionService();
+                if (dolby) {
+                    // Preserve the registered IGBA pool while using the working GRALLOC backing.
+                    backingAllocatorId = C2AllocatorStore::DEFAULT_GRAPHIC;
+                }
+#endif
+
+                res = allocatorStore->fetchAllocator(backingAllocatorId, &allocator);
                 if (res == C2_OK) {
                     bool blockFence =
                             (components.size() == 1 && allocatorParam.blockFenceSupport);
@@ -648,8 +668,17 @@ private:
                     mComponents[poolId].insert(
                            mComponents[poolId].end(),
                            components.begin(), components.end());
+
+#ifdef CODEC2_LEGACY_DOLBY_IGBA
+                    if (dolby) {
+                        ALOGW("Dolby IGBA compat: poolId=%llu backingAllocator=%u",
+                              static_cast<unsigned long long>(poolId),
+                              static_cast<unsigned>(ptr->getAllocatorId()));
+                    }
+#endif
                 }
                 break;
+            }
             default:
                 // Try to create block pool from platform store plugins.
                 std::shared_ptr<C2BlockPool> ptr;
