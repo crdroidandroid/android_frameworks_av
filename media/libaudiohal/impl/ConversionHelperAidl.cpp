@@ -16,8 +16,9 @@
 
 #define LOG_TAG "ConversionHelperAidl"
 
+#include <android/binder_status.h>
 #include <memory>
-
+#include <utility>
 #include <media/AidlConversionUtil.h>
 #include <utils/Log.h>
 
@@ -77,8 +78,30 @@ status_t fillVendorParameters(std::shared_ptr<IHalAdapterVendorExtension> vendor
     assert(syncParameters.empty() && asyncParameters.empty());
 
     const String8 rawKeysAndValues = parameters.toString();
-    RETURN_STATUS_IF_ERROR(statusTFromBinderStatus(vendorExt->parseVendorParameters(
-            scope, std::string(rawKeysAndValues.c_str()), &syncParameters, &asyncParameters)));
+    auto binderStatus = vendorExt->parseVendorParameters(
+            scope,
+            std::string(rawKeysAndValues.c_str()),
+            &syncParameters,
+            &asyncParameters);
+
+#ifdef MTK_LEGACY_RAW_VENDOR_PARAMETERS
+    if (!binderStatus.isOk() &&
+            binderStatus.getStatus() == STATUS_UNEXPECTED_NULL) {
+        ALOGW("parseVendorParameters returned UNEXPECTED_NULL, "
+              "falling back to raw vendor parameters");
+
+        syncParameters.clear();
+        asyncParameters.clear();
+
+        VendorParameter parameter;
+        parameter.id = rawKeysAndValues.c_str();
+        syncParameters.push_back(std::move(parameter));
+
+        return OK;
+    }
+#endif
+
+    RETURN_STATUS_IF_ERROR(statusTFromBinderStatus(binderStatus));
     return OK;
 }
 

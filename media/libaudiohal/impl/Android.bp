@@ -7,6 +7,29 @@ package {
     default_applicable_licenses: ["frameworks_av_license"],
 }
 
+soong_config_module_type {
+    name: "libaudiohal_mtk_legacy_raw_cc_defaults",
+    module_type: "cc_defaults",
+    config_namespace: "libaudiohal_legacy_raw",
+    bool_variables: [
+        "mtk_legacy_raw_vendor_parameters",
+    ],
+    properties: [
+        "cflags",
+    ],
+}
+
+libaudiohal_mtk_legacy_raw_cc_defaults {
+    name: "libaudiohal_mtk_legacy_raw_defaults",
+    soong_config_variables: {
+        mtk_legacy_raw_vendor_parameters: {
+            cflags: [
+                "-DMTK_LEGACY_RAW_VENDOR_PARAMETERS",
+            ],
+        },
+    },
+}
+
 filegroup {
     name: "audio_core_hal_client_sources",
     srcs: [
@@ -233,6 +256,7 @@ cc_library_shared {
     defaults: [
         "libaudiohal_aidl_default",
         "libaudiohal_default",
+        "libaudiohal_mtk_legacy_raw_defaults",
     ],
     srcs: [
         ":audio_effect_hal_aidl_src_files",
