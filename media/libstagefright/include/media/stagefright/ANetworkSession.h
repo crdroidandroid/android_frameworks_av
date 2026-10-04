@@ -122,8 +122,8 @@ private:
             const sp<AMessage> &notify,
             int32_t *sessionID);
 
-    void threadLoop();
-    void interrupt();
+    void threadLoop() __attribute__((visibility("hidden")));
+    void interrupt() __attribute__((visibility("hidden")));
 
     static status_t MakeSocketNonBlocking(int s);
 
