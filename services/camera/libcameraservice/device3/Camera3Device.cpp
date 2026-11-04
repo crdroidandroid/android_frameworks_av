@@ -3816,6 +3816,18 @@ bool Camera3Device::RequestThread::threadLoop() {
     for (size_t i = 0; i < mNextRequests.size(); i++) {
         auto& nextRequest = mNextRequests.editItemAt(i);
         sp<CaptureRequest> captureRequest = nextRequest.captureRequest;
+#ifdef SANITIZE_AUTO_FRAME_DURATION
+        for (auto& settings : captureRequest->mSettingsList) {
+            camera_metadata_entry aeMode = settings.metadata.find(ANDROID_CONTROL_AE_MODE);
+            if (aeMode.count > 0 && aeMode.data.u8[0] != ANDROID_CONTROL_AE_MODE_OFF) {
+                // SENSOR_FRAME_DURATION is a manual control and must not affect
+                // requests while AE is active. Some legacy HAL templates contain
+                // the sensor's maximum duration here and incorrectly throttle
+                // otherwise automatic preview requests.
+                settings.metadata.erase(ANDROID_SENSOR_FRAME_DURATION);
+            }
+        }
+#endif
         captureRequest->mTestPatternChanged = overrideTestPattern(captureRequest);
         // Do not override rotate&crop for stream configurations that include
         // SurfaceViews(HW_COMPOSER) output, unless mCompatInfo is set.
