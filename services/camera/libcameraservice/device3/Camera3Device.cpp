@@ -3707,6 +3707,21 @@ bool Camera3Device::RequestThread::updateSessionParameters(const CameraMetadata&
     }
 
     CameraMetadata updatedParams(mLatestSessionParams);
+#ifdef CAMERA_PACKAGE_NAME
+    uint32_t frameworkPackageNameTag = UINT32_MAX;
+    sp<VendorTagDescriptor> vTags;
+    sp<VendorTagDescriptorCache> vCache = VendorTagDescriptorCache::getGlobalVendorTagCache();
+    if (vCache.get()) {
+        const camera_metadata_t* metaBuffer = mLatestSessionParams.getAndLock();
+        metadata_vendor_id_t vendorId = get_camera_metadata_vendor_id(metaBuffer);
+        mLatestSessionParams.unlock(metaBuffer);
+        vCache->getVendorTagDescriptor(vendorId, &vTags);
+        if (CameraMetadata::getTagFromName(
+                    CAMERA_PACKAGE_NAME, vTags.get(), &frameworkPackageNameTag) != OK) {
+            frameworkPackageNameTag = UINT32_MAX;
+        }
+    }
+#endif
     for (auto tag : mSessionParamKeys) {
         camera_metadata_ro_entry entry = settings.find(tag);
         camera_metadata_entry lastEntry = updatedParams.find(tag);
@@ -3742,6 +3757,14 @@ bool Camera3Device::RequestThread::updateSessionParameters(const CameraMetadata&
                 updatedParams.update(entry);
             }
         } else if (lastEntry.count > 0) {
+#ifdef CAMERA_PACKAGE_NAME
+            // This value is injected by CameraService rather than supplied by
+            // application requests. Keep it in the active session parameters
+            // when it is absent from a capture request.
+            if (static_cast<uint32_t>(tag) == frameworkPackageNameTag) {
+                continue;
+            }
+#endif
             // Value has been removed
             ALOGV("%s: Session parameter tag id %d removed", __FUNCTION__, tag);
             updatedParams.erase(tag);
