@@ -611,7 +611,12 @@ status_t CameraProviderManager::turnOnTorchWithStrengthLevel(const std::string &
             return BAD_VALUE;
         }
 
-        deviceInfo->setTorchMode(torchStrength > 0);
+        status_t res = deviceInfo->setTorchMode(torchStrength > 0);
+        if (res != OK) {
+            ALOGE("%s: Failed to turn on torch for camera %s: %d",
+                    __FUNCTION__, id.c_str(), res);
+            return res;
+        }
         setTorchStrengthLevelExt(torchStrength, true);
         deviceInfo->mTorchStrengthLevel = torchStrength;
         return OK;
@@ -712,7 +717,8 @@ status_t CameraProviderManager::setTorchMode(const std::string &id, bool enabled
     saveRef(DeviceMode::TORCH, deviceInfo->mId, halCameraProvider);
 
     res = deviceInfo->setTorchMode(enabled);
-    if (deviceInfo->hasFlashUnit() && supportsTorchStrengthControlExt()) {
+    if (deviceInfo->hasFlashUnit() && supportsTorchStrengthControlExt() &&
+            (res == OK || !enabled)) {
         // Need to reset torch strength back to default when torch is turned off
         int32_t defaultLevel = getTorchDefaultStrengthLevelExt();
         setTorchStrengthLevelExt(defaultLevel, enabled);
