@@ -8071,14 +8071,15 @@ void MediaCodec::postPendingRepliesAndDeferredMessages(
 
 void MediaCodec::postPendingRepliesAndDeferredMessages(
         std::string origin, const sp<AMessage> &response) {
-    LOG_ALWAYS_FATAL_IF(
-            !mReplyID,
-            "postPendingRepliesAndDeferredMessages: mReplyID == null, from %s following %s",
-            origin.c_str(),
-            mLastReplyOrigin.c_str());
-    mLastReplyOrigin = origin;
-    response->postReply(mReplyID);
-    mReplyID.clear();
+    if (mReplyID) {
+        mLastReplyOrigin = origin;
+        response->postReply(mReplyID);
+        mReplyID.clear();
+    } else {
+        ALOGW("postPendingRepliesAndDeferredMessages: mReplyID == null, from %s following %s",
+              origin.c_str(),
+              mLastReplyOrigin.c_str());
+    }
     ALOGV_IF(!mDeferredMessages.empty(),
             "posting %zu deferred messages", mDeferredMessages.size());
     for (sp<AMessage> msg : mDeferredMessages) {
