@@ -93,6 +93,7 @@
 #include <optional>
 #include <ranges>
 #include <sstream>
+#include <chrono>
 #include <thread>
 #include <type_traits>
 #include <vector>
@@ -2866,6 +2867,11 @@ std::vector<std::shared_ptr<Codec2Client>> Codec2Client::
     return clients;
 }
 
+namespace {
+constexpr size_t kCreateClientMaxAttempts = 15;
+constexpr std::chrono::milliseconds kCreateClientRetryPeriod{1000};
+}  // unnamed namespace
+
 std::shared_ptr<Codec2Client> Codec2Client::_CreateFromIndex(size_t index) {
     std::string const& name = GetServiceNames()[index];
     LOG(VERBOSE) << "Creating a Codec2 client to service \"" << name << "\"";
@@ -2881,16 +2887,26 @@ std::shared_ptr<Codec2Client> Codec2Client::_CreateFromIndex(size_t index) {
             std::string instanceName =
                 ::android::base::StringPrintf("%s/%s", AidlBase::descriptor, name.c_str());
             if (AServiceManager_isDeclared(instanceName.c_str())) {
-                std::shared_ptr<AidlBase> baseStore = AidlBase::fromBinder(
-                        ::ndk::SpAIBinder(AServiceManager_waitForService(instanceName.c_str())));
-                CHECK(baseStore) << "Codec2 AIDL service \"" << name << "\""
-                                    " inaccessible for unknown reasons.";
-                LOG(VERBOSE) << "Client to Codec2 AIDL service \"" << name << "\" created";
-                std::shared_ptr<c2_aidl::IConfigurable> configurable;
-                ::ndk::ScopedAStatus transStatus = baseStore->getConfigurable(&configurable);
-                CHECK(transStatus.isOk()) << "Codec2 AIDL service \"" << name << "\""
-                                            "does not have IConfigurable.";
-                return std::make_shared<Codec2Client>(baseStore, configurable, index);
+                for (size_t attempt = 1; ; ++attempt) {
+                    std::shared_ptr<AidlBase> baseStore = AidlBase::fromBinder(
+                            ::ndk::SpAIBinder(AServiceManager_waitForService(
+                                    instanceName.c_str())));
+                    CHECK(baseStore) << "Codec2 AIDL service \"" << name << "\""
+                                        " inaccessible for unknown reasons.";
+                    LOG(VERBOSE) << "Client to Codec2 AIDL service \"" << name << "\" created";
+                    std::shared_ptr<c2_aidl::IConfigurable> configurable;
+                    ::ndk::ScopedAStatus transStatus = baseStore->getConfigurable(&configurable);
+                    if (transStatus.isOk() && configurable) {
+                        return std::make_shared<Codec2Client>(baseStore, configurable, index);
+                    }
+                    CHECK(attempt < kCreateClientMaxAttempts)
+                            << "Codec2 AIDL service \"" << name << "\""
+                               " does not have IConfigurable.";
+                    LOG(WARNING) << "Codec2 AIDL service \"" << name << "\""
+                                    " getConfigurable failed (attempt " << attempt
+                                 << "): " << transStatus.getDescription() << ". Retrying...";
+                    std::this_thread::sleep_for(kCreateClientRetryPeriod);
+                }
             } else {
                 LOG(ERROR) << "Codec2 AIDL service \"" << name << "\" is not declared";
             }
@@ -2899,16 +2915,30 @@ std::shared_ptr<Codec2Client> Codec2Client::_CreateFromIndex(size_t index) {
         }
     } else {
         std::string instanceName = "android.hardware.media.c2/" + name;
-        sp<HidlBase> baseStore = HidlBase::getService(name);
-        CHECK(baseStore) << "Codec2 service \"" << name << "\""
-                            " inaccessible for unknown reasons.";
-        LOG(VERBOSE) << "Client to Codec2 service \"" << name << "\" created";
-        Return<sp<c2_hidl::IConfigurable>> transResult = baseStore->getConfigurable();
-        CHECK(transResult.isOk()) << "Codec2 service \"" << name << "\""
-                                    "does not have IConfigurable.";
-        sp<c2_hidl::IConfigurable> configurable =
-            static_cast<sp<c2_hidl::IConfigurable>>(transResult);
-        return std::make_shared<Codec2Client>(baseStore, configurable, index);
+        for (size_t attempt = 1; ; ++attempt) {
+            // getService() blocks until the (re)started service registers.
+            sp<HidlBase> baseStore = HidlBase::getService(name);
+            CHECK(baseStore) << "Codec2 service \"" << name << "\""
+                                " inaccessible for unknown reasons.";
+            LOG(VERBOSE) << "Client to Codec2 service \"" << name << "\" created";
+            Return<sp<c2_hidl::IConfigurable>> transResult = baseStore->getConfigurable();
+            if (transResult.isOk()) {
+                sp<c2_hidl::IConfigurable> configurable =
+                    static_cast<sp<c2_hidl::IConfigurable>>(transResult);
+                if (configurable) {
+                    return std::make_shared<Codec2Client>(baseStore, configurable, index);
+                }
+            }
+            CHECK(attempt < kCreateClientMaxAttempts)
+                    << "Codec2 service \"" << name << "\""
+                       " does not have IConfigurable.";
+            LOG(WARNING) << "Codec2 service \"" << name << "\""
+                            " getConfigurable failed (attempt " << attempt << "): "
+                         << (transResult.isOk() ? std::string("null IConfigurable")
+                                                : transResult.description())
+                         << ". Retrying...";
+            std::this_thread::sleep_for(kCreateClientRetryPeriod);
+        }
     }
     return nullptr;
 }
