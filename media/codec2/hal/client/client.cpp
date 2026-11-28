@@ -356,6 +356,7 @@ private:
 Codec2ConfigurableClient::HidlImpl::HidlImpl(const sp<Base>& base)
       : mBase{base},
         mName{[base]() -> C2String {
+                if (!base) return "";
                 C2String outName;
                 Return<void> transStatus = base->getName(
                         [&outName](const hidl_string& name) {
@@ -625,6 +626,7 @@ private:
 Codec2ConfigurableClient::AidlImpl::AidlImpl(const std::shared_ptr<Base>& base)
       : mBase{base},
         mName{[base]() -> C2String {
+                if (!base) return "";
                 std::string outName;
                 ndk::ScopedAStatus status = base->getName(&outName);
                 return status.isOk() ? outName : "";
@@ -2477,6 +2479,12 @@ c2_status_t Codec2Client::createInterface(
             return C2_CORRUPTED;
         }
         interface->reset(new Codec2Client::Interface(aidlInterface));
+        if ((*interface)->getName().empty()) {
+            LOG(ERROR) << "createInterface(" << name.c_str()
+                       << ") -- no IConfigurable.";
+            interface->reset();
+            return C2_CORRUPTED;
+        }
         return C2_OK;
     }
 
@@ -2490,7 +2498,16 @@ c2_status_t Codec2Client::createInterface(
                 if (status != C2_OK) {
                     return;
                 }
+                if (!i) {
+                    status = C2_CORRUPTED;
+                    return;
+                }
                 *interface = std::make_shared<Interface>(i);
+                // A dead service yields no IConfigurable and an empty name.
+                if ((*interface)->getName().empty()) {
+                    interface->reset();
+                    status = C2_CORRUPTED;
+                }
             });
     if (!transStatus.isOk()) {
         LOG(ERROR) << "createInterface(" << name.c_str()
